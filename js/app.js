@@ -21,17 +21,52 @@
             try {
                 setStatus('analyze-status', '⏳ ' + esc(file.name) + ' …');
                 const text = await window.CvExtract.extractFile(file);
-                if (!text || text.split(/\s+/).length < 30) {
-                    setStatus('analyze-status', '⚠️ ' + file.name + ': little/no text found (scanned PDF?) — paste the text manually.');
+                const words = text.split(/\s+/).filter(Boolean).length;
+                if (!text || words < 30) {
+                    setStatus('analyze-status', '⚠️ ' + esc(file.name) + ': ' + t('scannedPdfAdvice'));
+                    $('inp-cv').focus();
                     return;
                 }
                 area.value = text;
                 updateStats();
-                setStatus('analyze-status', '✅ ' + esc(file.name) + ' — ' + text.split(/\s+/).length + ' ' + t('words'));
+                setStatus('analyze-status', '✅ ' + esc(file.name) + ' — ' + words + ' ' + t('words'));
             } catch (err) {
-                setStatus('analyze-status', '⚠️ ' + esc(err.message));
+                setStatus('analyze-status', '⚠️ ' + esc(err.message) + ' — ' + t('scannedPdfAdvice'));
             }
         }
+    }
+
+    function loadExample() {
+        $('inp-cv').value = [
+            'HAJAR BENHADJ — Software Developer, Casablanca',
+            'Email: hajar@example.com | +212 612 345 678 | linkedin.com/in/hajar-benhadj | github.com/hajar-benhadj',
+            '',
+            'EXPERIENCE',
+            'Freelance Automation Developer (2024 – Present)',
+            'Developed an n8n automation product sold to small businesses, reducing manual admin work by 80%.',
+            'Built AI integrations with the OpenAI API for document analysis and email summarization.',
+            'Software Engineering Intern — AI Vision Team (2023 – 2024)',
+            'Implemented a real-time fall detection system with OpenCV and MediaPipe (92% precision on 5,000 frames).',
+            'Automated Swagger/OpenAPI REST API test generation with Pytest, cutting test-writing time by 60%.',
+            '',
+            'SKILLS',
+            'Python, JavaScript (ES6+), HTML5, CSS3, OpenAI API, n8n, OpenCV, MediaPipe, Pytest, Git, GitHub Actions.',
+            '',
+            'EDUCATION',
+            'BSc Computer Science — Hassan II University (2020 – 2023)',
+            '',
+            'LANGUAGES',
+            'Arabic (native), French (fluent), English (fluent), German (B1)',
+        ].join('\n');
+        $('inp-job').value = [
+            'Junior Full-Stack Developer (React / Node.js) — TechMart, Casablanca (hybrid)',
+            'We build e-commerce dashboards used by 200+ Moroccan retailers. Team of 5, React + TypeScript + Node.js.',
+            'Required: 1+ year with React and modern JavaScript · Node.js REST API development · TypeScript · SQL (PostgreSQL or MySQL) · French AND English · Git and code review.',
+            'Nice to have: Docker · CI/CD · AWS/GCP · interest in AI features.',
+            'CDI, 12,000–16,000 MAD/month.',
+        ].join('\n');
+        updateStats();
+        setStatus('analyze-status', '');
     }
 
     function updateStats() {
@@ -40,25 +75,41 @@
 
     // ---------- job fetch ----------
     function initJobFetch() {
-        $('btn-fetch-job').addEventListener('click', async () => {
-            const url = $('inp-job-url').value.trim();
-            const st = $('fetch-status');
-            if (!url) return;
-            st.className = 'text-xs mt-1';
-            st.textContent = '⏳ ' + t('fetching');
-            st.classList.remove('hidden');
+        $('btn-fetch-job').addEventListener('click', fetchJob);
+    }
+
+    // proxy chain — each service fails on different sites, so we try them in order
+    const PROXIES = [
+        { name: 'jina', build: (u) => 'https://r.jina.ai/' + u, clean: stripReaderHeaders },
+        { name: 'allorigins', build: (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), clean: (t) => t },
+        { name: 'corsproxy', build: (u) => 'https://corsproxy.io/?' + encodeURIComponent(u), clean: (t) => t },
+    ];
+
+    function stripReaderHeaders(text) {
+        return text.replace(/^(Title|URL Source|Published Time|Warning|Markdown Content):.*\n+/gm, '').trim();
+    }
+
+    async function fetchJob() {
+        const url = $('inp-job-url').value.trim();
+        const st = $('fetch-status');
+        if (!url) return;
+        st.className = 'text-xs mt-1';
+        st.classList.remove('hidden');
+
+        for (let i = 0; i < PROXIES.length; i++) {
+            st.textContent = '⏳ ' + t('fetching') + ' (' + (i + 1) + '/' + PROXIES.length + ')…';
             try {
-                const res = await fetch('https://r.jina.ai/' + url, { headers: { 'Accept': 'text/plain' } });
+                const res = await fetch(PROXIES[i].build(url), { headers: { 'Accept': 'text/plain' } });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
-                let text = (await res.text()).trim();
-                text = text.replace(/^(Title|URL Source):.*\n+/gm, '').trim();
-                if (text.split(/\s+/).length < 40) throw new Error('too short');
-                $('inp-job').value = text.slice(0, 15000);
+                let text = PROXIES[i].clean((await res.text()).trim());
+                if (text.split(/\s+/).filter(Boolean).length < 40) throw new Error('too short');
+                // basic sanity: looks like HTML markup only → useless
+                $('inp-job').value = text.replace(/<script[\s\S]*?<\/script>/gi, '').slice(0, 15000);
                 st.textContent = '✅ ' + t('fetchOk');
-            } catch (e) {
-                st.textContent = '⚠️ ' + t('fetchFail');
-            }
-        });
+                return;
+            } catch (e) { /* try next proxy */ }
+        }
+        st.textContent = '⚠️ ' + t('fetchFail');
     }
 
     // ---------- analyze ----------
@@ -234,6 +285,8 @@
         initAnalyze();
         window.I18N.apply();
         $('lang-select').addEventListener('change', (e) => window.I18N.setLang(e.target.value));
+        const ex = $('btn-example');
+        if (ex) ex.addEventListener('click', loadExample);
         updateStats();
     });
 })();
