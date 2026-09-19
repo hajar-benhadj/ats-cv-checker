@@ -78,11 +78,11 @@
         $('btn-fetch-job').addEventListener('click', fetchJob);
     }
 
-    // proxy chain — each service fails on different sites, so we try them in order
+    // fetch chain — our serverless fetcher first (no CORS limits), r.jina.ai as
+    // fallback (renders JavaScript, rate-limited sometimes)
     const PROXIES = [
-        { name: 'jina', build: (u) => 'https://r.jina.ai/' + u, clean: stripReaderHeaders },
-        { name: 'allorigins', build: (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), clean: (t) => t },
-        { name: 'corsproxy', build: (u) => 'https://corsproxy.io/?' + encodeURIComponent(u), clean: (t) => t },
+        { name: 'ours', build: (u) => 'https://ats-cv-checker-five.vercel.app/api/fetch-job?url=' + encodeURIComponent(u), json: true },
+        { name: 'jina', build: (u) => 'https://r.jina.ai/' + u, json: false, clean: stripReaderHeaders },
     ];
 
     function stripReaderHeaders(text) {
@@ -99,15 +99,22 @@
         for (let i = 0; i < PROXIES.length; i++) {
             st.textContent = '⏳ ' + t('fetching') + ' (' + (i + 1) + '/' + PROXIES.length + ')…';
             try {
-                const res = await fetch(PROXIES[i].build(url), { headers: { 'Accept': 'text/plain' } });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                let text = PROXIES[i].clean((await res.text()).trim());
+                const res = await fetch(PROXIES[i].build(url));
+                if (!res.ok) {
+                    let msg = '';
+                    try { msg = (await res.json()).error || ''; } catch (e) { /* not json */ }
+                    // login-walled sites: stop trying, tell the user immediately
+                    if (res.status === 451 || /login/i.test(msg)) { st.textContent = '🔒 ' + t('linkedinWarn'); return; }
+                    throw new Error('HTTP ' + res.status);
+                }
+                let text = PROXIES[i].json ? (await res.json()).text : (await res.text());
+                if (PROXIES[i].clean) text = PROXIES[i].clean(String(text).trim());
+                text = String(text || '').trim();
                 if (text.split(/\s+/).filter(Boolean).length < 40) throw new Error('too short');
-                // basic sanity: looks like HTML markup only → useless
-                $('inp-job').value = text.replace(/<script[\s\S]*?<\/script>/gi, '').slice(0, 15000);
+                $('inp-job').value = text.slice(0, 15000);
                 st.textContent = '✅ ' + t('fetchOk');
                 return;
-            } catch (e) { /* try next proxy */ }
+            } catch (e) { /* try next */ }
         }
         st.textContent = '⚠️ ' + t('fetchFail');
     }
