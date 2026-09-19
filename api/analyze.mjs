@@ -1,5 +1,5 @@
 // Vercel serverless function — keeps the OpenRouter key server-side.
-// The public site calls this endpoint; visitors never see any key or settings.
+// Node-style (req, res) handler for maximum runtime compatibility.
 export const maxDuration = 60;
 
 const ALLOWED_ORIGINS = [
@@ -21,37 +21,49 @@ function rateLimited(ip) {
     return cur.count > MAX_PER_HOUR;
 }
 
-function corsHeaders(req) {
-    const origin = req.headers.get('origin') || '';
-    return {
-        'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Vary': 'Origin',
-    };
+function readBody(req) {
+    return new Promise((resolve, reject) => {
+        let data = '';
+        req.on('data', (c) => { data += c; });
+        req.on('end', () => {
+            try { resolve(data ? JSON.parse(data) : {}); }
+            catch (e) { reject(new Error('Invalid JSON body.')); }
+        });
+        req.on('error', reject);
+    });
 }
 
-export default async function handler(req) {
-    const headers = { 'Content-Type': 'application/json', ...corsHeaders(req) };
+export default async function handler(req, res) {
+    const origin = (req.headers && (req.headers.origin || '')) || '';
+    const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+    res.setHeader('Access-Control-Allow-Origin', allow);
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Vary', 'Origin');
 
-    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+    if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
     if (req.method !== 'POST') {
-        return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers });
+        res.statusCode = 405;
+        return res.end(JSON.stringify({ error: 'Method not allowed' }));
     }
 
-    const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
+    const ip = String((req.headers['x-forwarded-for'] || '').split(',')[0] || 'unknown').trim();
     if (rateLimited(ip)) {
-        return new Response(JSON.stringify({ error: 'Rate limit reached (10/hour). Try again later.' }), { status: 429, headers });
+        res.statusCode = 429;
+        return res.end(JSON.stringify({ error: 'Rate limit reached (10/hour). Try again later.' }));
     }
 
     const key = process.env.OPENROUTER_KEY;
     if (!key) {
-        return new Response(JSON.stringify({ error: 'Server not configured (missing key).' }), { status: 500, headers });
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ error: 'Server not configured (missing key).' }));
     }
 
     let body;
-    try { body = await req.json(); } catch (e) {
-        return new Response(JSON.stringify({ error: 'Invalid JSON body.' }), { status: 400, headers });
+    try { body = await readBody(req); }
+    catch (e) {
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ error: e.message }));
     }
 
     const cv = String(body.cv || '').slice(0, 12000);
@@ -60,22 +72,22 @@ export default async function handler(req) {
     const rulesFailed = Array.isArray(body.rulesFailed) ? body.rulesFailed.slice(0, 12) : [];
 
     if (cv.length < 100 || job.length < 100) {
-        return new Response(JSON.stringify({ error: 'CV and job text are required.' }), { status: 400, headers });
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ error: 'CV and job text are required.' }));
     }
 
     const model = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-v4-flash-0731:free';
 
     try {
         const aiText = await callOpenRouter(key, model, cv, job, lang, rulesFailed);
-        return new Response(JSON.stringify({ result: aiText }), {
-            status: 200,
-            headers: { ...headers, 'Cache-Control': 'no-store' },
-        });
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'no-store');
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ result: aiText }));
     } catch (err) {
-        return new Response(JSON.stringify({ error: err.message || 'AI request failed.' }), {
-            status: 502,
-            headers,
-        });
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 502;
+        return res.end(JSON.stringify({ error: err.message || 'AI request failed.' }));
     }
 }
 
@@ -122,7 +134,7 @@ async function callOpenRouter(key, model, cv, job, lang, rulesFailed) {
     }
 }
 
-// The same strict evidence-based prompt used by the client previously.
+// Strict evidence-based prompt (same contract as the original client-side version).
 function systemPrompt(lang) {
     const fr = lang === 'fr';
     return [
