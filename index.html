@@ -33,37 +33,11 @@
                     <option value="en">English</option>
                     <option value="fr">Français</option>
                 </select>
-                <button id="btn-settings" class="btn-secondary text-sm" data-i18n="settings">⚙️ AI Settings</button>
             </div>
         </div>
     </header>
 
     <main class="max-w-5xl mx-auto px-4 pb-16">
-
-        <!-- Settings panel -->
-        <section id="settings-panel" class="card hidden">
-            <h2 class="card-title" data-i18n="settingsTitle">AI Settings (stored only in your browser)</h2>
-            <div class="grid sm:grid-cols-3 gap-3">
-                <div>
-                    <label class="label" data-i18n="apiKey">API key</label>
-                    <input id="inp-key" type="password" class="input font-mono" placeholder="sk-...">
-                </div>
-                <div>
-                    <label class="label">Base URL</label>
-                    <input id="inp-base" class="input font-mono" placeholder="https://api.openai.com/v1">
-                </div>
-                <div>
-                    <label class="label" data-i18n="model">Model</label>
-                    <select id="inp-model" class="input">
-                        <option value="gpt-4o">gpt-4o (most accurate)</option>
-                        <option value="gpt-4o-mini">gpt-4o-mini (cheap)</option>
-                        <option value="custom" data-i18n="customModel">custom…</option>
-                    </select>
-                    <input id="inp-model-custom" class="input mt-2 hidden font-mono" placeholder="model-name">
-                </div>
-            </div>
-            <p class="text-xs opacity-60 mt-2" data-i18n="settingsNote">Your key stays in localStorage on this device — CVs and jobs are sent only to the AI provider you choose, never to us (there is no server).</p>
-        </section>
 
         <!-- Inputs -->
         <div class="grid md:grid-cols-2 gap-4 mt-4">
@@ -106,7 +80,7 @@
     </main>
 
     <footer class="max-w-5xl mx-auto px-4 pb-10 text-center text-xs opacity-60">
-        CV Lens — <span data-i18n="footer">runs 100% in your browser · no server, no tracking · built by Hajar Benhadj</span>
+        CV Lens — <span data-i18n="footer">analysis via a private rate-limited API · your CV is never stored or logged · built by Hajar Benhadj</span>
     </footer>
 
     <script src="js/i18n.js"></script>

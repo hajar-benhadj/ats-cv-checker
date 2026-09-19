@@ -4,7 +4,7 @@ export const maxDuration = 60;
 
 const ALLOWED_ORIGINS = [
     'https://hajar-benhadj.github.io',
-    'https://ats-cv-checker.vercel.app',
+    'https://ats-cv-checker-five.vercel.app',
 ];
 
 // best-effort in-memory rate limit (per warm instance)

@@ -53,10 +53,12 @@
             improveTitle: '✏️ Improve these',
             rulesTitle: '⚡ ATS formatting checks (rule-based)',
             copyReport: 'Copy full report',
+            printReport: 'Print / PDF',
             copied: 'Copied ✓',
             reanalyze: 'Re-analyze',
             jobDetected: 'Detected position',
             noEvidence: '—',
+            footer: 'analysis via a private rate-limited API · your CV is never stored or logged · built by Hajar Benhadj',
         },
         fr: {
             tagline: '— voyez votre CV comme un ATS',
@@ -108,10 +110,12 @@
             improveTitle: '✏️ À améliorer',
             rulesTitle: '⚡ Vérifications du formatage ATS (règles)',
             copyReport: 'Copier le rapport complet',
+            printReport: 'Imprimer / PDF',
             copied: 'Copié ✓',
             reanalyze: 'Ré-analyser',
             jobDetected: 'Poste détecté',
             noEvidence: '—',
+            footer: 'analyse via une API privée limitée en débit · votre CV n\u2019est jamais stocké ni journalisé · réalisé par Hajar Benhadj',
         },
     };
 

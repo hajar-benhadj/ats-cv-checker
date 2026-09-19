@@ -1,94 +1,44 @@
-// analyze.js — AI analysis: strict evidence-based JSON output
+// analyze.js — calls the serverless endpoint (key stays server-side) and normalizes the JSON
 (function () {
     'use strict';
 
-    function systemPrompt(lang) {
-        const fr = lang === 'fr';
-        return [
-            'You are a meticulous ATS (Applicant Tracking System) analyst and senior technical recruiter.',
-            'You compare a candidate CV against ONE job posting and output ONLY strict JSON (no markdown fences, no commentary).',
-            '',
-            'ACCURACY RULES (absolute):',
-            '- Every claim must be grounded in the provided texts. Quote short evidence from the CV (≤12 words) or write "".',
-            '- NEVER invent experience, tools or keywords the candidate may not have. Suggestions must be conditional ("if you have used X, add…").',
-            '- keyword status: "found" ONLY if the requirement is explicitly present in the CV; "partial" if a closely related skill/experience exists (say how); "missing" otherwise. When unsure, prefer "partial" with an honest note.',
-            '- importance: "must" only for requirements the posting calls required/mandatory or lists first; otherwise "nice".',
-            '- Do not penalize synonyms twice: if CV says "JS" and job says "JavaScript", that is "found".',
-            '- Be strict but fair: scoring 90+ only for near-perfect must-have coverage.',
-            '',
-            'OUTPUT JSON SCHEMA (respond with exactly this structure):',
-            '{',
-            '  "job": { "title": string, "company": string, "must_haves": string[], "nice_to_haves": string[] },',
-            '  "scores": { "overall": 0-100, "must_haves": 0-100, "keywords": 0-100, "experience": 0-100, "education": 0-100, "format": 0-100 },',
-            '  "keyword_table": [ { "keyword": string, "importance": "must"|"nice", "status": "found"|"partial"|"missing", "evidence": string } ],  // 12-20 rows, cover ALL must-haves first',
-            '  "add": [ { "what": string, "why": string, "example": string } ],      // 3-6 concrete additions, examples only as suggestions',
-            '  "remove": [ { "what": string, "why": string } ],                      // 0-4 items, only clearly irrelevant or risky content',
-            '  "improve": [ { "section": string, "suggestion": string, "before": string, "after": string } ],  // 2-5 rewrites quoting the CV ("before")',
-            '  "summary": string                                                       // 2-3 sentences, direct and honest',
-            '}',
-            '',
-            fr ? 'Write all human-readable strings (summary, what, why, suggestion, example, before/after) in FRENCH. Keywords stay in their original language.' : 'Write all human-readable strings in English. Keep keywords in their original language.',
-            'Respond with JSON only.',
-        ].join('\n');
-    }
-
-    function userPrompt(cvText, jobText, rulesFailed) {
-        const rulesNote = rulesFailed && rulesFailed.length
-            ? '\n\nRule-based formatting issues already detected automatically (factor them into the "format" score): ' +
-              rulesFailed.map((f) => f.issue).join('; ')
-            : '';
-        return [
-            '### JOB POSTING\n' + jobText.trim().slice(0, 12000),
-            '\n### CANDIDATE CV\n' + cvText.trim().slice(0, 12000),
-            rulesNote,
-            '\nAnalyze this CV against this job posting. Be precise and evidence-based.',
-        ].join('\n');
-    }
+    // Filled with the real deployment URL (see README for how to change it)
+    const API_URL = 'https://ats-cv-checker-five.vercel.app/api/analyze';
 
     /**
-     * @param {object} cfg {key, baseUrl, model}
      * @param {string} cvText
      * @param {string} jobText
-     * @param {Array} rulesFailed
+     * @param {Array} rulesFailed issues from rules.js
      * @param {string} lang 'en'|'fr'
+     * @returns {Promise<object>} normalized result
      */
-    async function analyze(cfg, cvText, jobText, rulesFailed, lang) {
-        const res = await fetch(cfg.baseUrl.replace(/\/+$/, '') + '/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + cfg.key,
-            },
-            body: JSON.stringify({
-                model: cfg.model,
-                temperature: 0.2,
-                response_format: { type: 'json_object' },
-                messages: [
-                    { role: 'system', content: systemPrompt(lang) },
-                    { role: 'user', content: userPrompt(cvText, jobText, rulesFailed) },
-                ],
-            }),
-        });
-
-        if (!res.ok) {
-            let msg = 'HTTP ' + res.status;
-            try {
-                const err = await res.json();
-                msg = (err.error && (err.error.message || err.error.type)) || msg;
-            } catch (e) { /* ignore */ }
-            throw new Error(msg);
+    async function analyze(cvText, jobText, rulesFailed, lang) {
+        let res;
+        try {
+            res = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cv: cvText, job: jobText, rulesFailed: (rulesFailed || []).map((f) => f.issue), lang }),
+            });
+        } catch (e) {
+            throw new Error('Network error — check your connection and retry.');
         }
 
-        const data = await res.json();
-        let text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-        if (!text) throw new Error('Empty AI response');
+        let data;
+        try { data = await res.json(); } catch (e) { data = {}; }
+
+        if (!res.ok || data.error) {
+            throw new Error(data.error || ('HTTP ' + res.status));
+        }
+
+        let text = data.result;
+        if (!text) throw new Error('Empty response from server');
 
         text = String(text).replace(/```json|```/g, '').trim();
         const first = Math.min(...['{', '['].map((c) => { const i = text.indexOf(c); return i === -1 ? Infinity : i; }));
         if (first > 0) text = text.slice(first);
 
         const parsed = JSON.parse(text);
-        // normalize / guard every field so rendering never crashes
         return {
             job: {
                 title: String((parsed.job && parsed.job.title) || ''),

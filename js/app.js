@@ -1,59 +1,10 @@
-// app.js — UI wiring
+// app.js — UI wiring (no settings: analysis runs server-side, ready out of the box)
 (function () {
     'use strict';
 
     const $ = (id) => document.getElementById(id);
     const t = (k) => window.I18N.t(k);
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
-    // ---------- settings ----------
-    const DEFAULTS = { key: '', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' };
-
-    function loadCfg() {
-        try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('cvlens_cfg') || '{}')); }
-        catch (e) { return { ...DEFAULTS }; }
-    }
-    function saveCfg(cfg) { localStorage.setItem('cvlens_cfg', JSON.stringify(cfg)); }
-
-    function currentModel(cfg) {
-        const sel = $('inp-model').value;
-        if (sel === 'custom') return $('inp-model-custom').value.trim() || 'gpt-4o';
-        // remembered custom model
-        if (cfg.model && !['gpt-4o', 'gpt-4o-mini'].includes(cfg.model)) {
-            $('inp-model').value = 'custom';
-            $('inp-model-custom').classList.remove('hidden');
-            $('inp-model-custom').value = cfg.model;
-            return cfg.model;
-        }
-        return sel;
-    }
-
-    function initSettings() {
-        const cfg = loadCfg();
-        $('inp-key').value = cfg.key || '';
-        $('inp-base').value = cfg.baseUrl || DEFAULTS.baseUrl;
-        if (cfg.model && !['gpt-4o', 'gpt-4o-mini'].includes(cfg.model)) {
-            $('inp-model').value = 'custom';
-            $('inp-model-custom').classList.remove('hidden');
-            $('inp-model-custom').value = cfg.model;
-        } else {
-            $('inp-model').value = cfg.model || 'gpt-4o';
-        }
-        $('btn-settings').addEventListener('click', () => $('settings-panel').classList.toggle('hidden'));
-        $('inp-model').addEventListener('change', () => {
-            $('inp-model-custom').classList.toggle('hidden', $('inp-model').value !== 'custom');
-        });
-    }
-
-    function readCfg() {
-        const cfg = {
-            key: $('inp-key').value.trim(),
-            baseUrl: $('inp-base').value.trim() || DEFAULTS.baseUrl,
-            model: currentModel(loadCfg()),
-        };
-        saveCfg(cfg);
-        return cfg;
-    }
 
     // ---------- CV input ----------
     function initCvInput() {
@@ -71,12 +22,12 @@
                 setStatus('analyze-status', '⏳ ' + esc(file.name) + ' …');
                 const text = await window.CvExtract.extractFile(file);
                 if (!text || text.split(/\s+/).length < 30) {
-                    setStatus('analyze-status', '⚠️ ' + (file.name) + ': little/no text found (scanned PDF?) — paste the text manually.');
+                    setStatus('analyze-status', '⚠️ ' + file.name + ': little/no text found (scanned PDF?) — paste the text manually.');
                     return;
                 }
                 area.value = text;
                 updateStats();
-                setStatus('analyze-status', '✅ ' + esc(file.name) + ' — ' + t('words') + ': ' + text.split(/\s+/).length);
+                setStatus('analyze-status', '✅ ' + esc(file.name) + ' — ' + text.split(/\s+/).length + ' ' + t('words'));
             } catch (err) {
                 setStatus('analyze-status', '⚠️ ' + esc(err.message));
             }
@@ -97,11 +48,9 @@
             st.textContent = '⏳ ' + t('fetching');
             st.classList.remove('hidden');
             try {
-                // r.jina.ai is a CORS-open reader that returns the page as clean text
                 const res = await fetch('https://r.jina.ai/' + url, { headers: { 'Accept': 'text/plain' } });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 let text = (await res.text()).trim();
-                // strip the "Title:/URL Source:" header lines r.jina.ai adds
                 text = text.replace(/^(Title|URL Source):.*\n+/gm, '').trim();
                 if (text.split(/\s+/).length < 40) throw new Error('too short');
                 $('inp-job').value = text.slice(0, 15000);
@@ -119,27 +68,37 @@
 
     function setStatus(id, msg) { $(id).textContent = msg || ''; }
 
+    let elapsedTimer = null;
+    function startElapsed() {
+        const t0 = Date.now();
+        stopElapsed();
+        elapsedTimer = setInterval(() => {
+            const s = Math.round((Date.now() - t0) / 1000);
+            setStatus('analyze-status', '🧠 ' + t('analyzing') + ' (' + s + 's)');
+        }, 1000);
+    }
+    function stopElapsed() { if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; } }
+
     async function runAnalysis() {
         const cv = $('inp-cv').value.trim();
         const job = $('inp-job').value.trim();
         if (cv.length < 100 || job.length < 100) { setStatus('analyze-status', '⚠️ ' + t('needBoth')); return; }
 
-        const cfg = readCfg();
-        if (!cfg.key) { setStatus('analyze-status', '⚠️ ' + t('needKey')); $('settings-panel').classList.remove('hidden'); return; }
-
         const rules = window.CvRules.runRules(cv, window.I18N.get());
         const btn = $('btn-analyze');
         btn.disabled = true;
-        setStatus('analyze-status', '🧠 ' + t('analyzing'));
+        startElapsed();
         $('results').classList.add('hidden');
 
         try {
-            const result = await window.CvAnalyze.analyze(cfg, cv, job, rules.failed, window.I18N.get());
+            const result = await window.CvAnalyze.analyze(cv, job, rules.failed, window.I18N.get());
             render(result, rules);
+            stopElapsed();
             setStatus('analyze-status', '');
             $('results').classList.remove('hidden');
             $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch (err) {
+            stopElapsed();
             setStatus('analyze-status', '❌ ' + t('errorPrefix') + esc(err.message));
         } finally {
             btn.disabled = false;
@@ -175,7 +134,7 @@
 
         let html = '';
 
-        // header card: score + verdict + subscores + summary
+        // header card
         html += '<div class="card"><div class="score-wrap">' + ring(s.overall) +
             '<div class="flex-1 min-w-[250px]">' +
             '<div class="flex items-center gap-3 flex-wrap mb-3">' +
@@ -227,11 +186,14 @@
         html += '</div>';
 
         // actions
-        html += '<div class="flex gap-3 justify-center"><button id="btn-copy" class="btn-secondary">📋 ' + esc(t('copyReport')) + '</button>' +
+        html += '<div class="flex gap-3 justify-center no-print">' +
+            '<button id="btn-copy" class="btn-secondary">📋 ' + esc(t('copyReport')) + '</button>' +
+            '<button id="btn-print" class="btn-secondary">🖨️ ' + esc(t('printReport')) + '</button>' +
             '<button id="btn-again" class="btn-secondary">🔁 ' + esc(t('reanalyze')) + '</button></div>';
 
         $('results').innerHTML = html;
         $('btn-copy').addEventListener('click', () => copyReport(result, rules));
+        $('btn-print').addEventListener('click', () => window.print());
         $('btn-again').addEventListener('click', runAnalysis);
     }
 
@@ -267,7 +229,6 @@
 
     // ---------- init ----------
     document.addEventListener('DOMContentLoaded', () => {
-        initSettings();
         initCvInput();
         initJobFetch();
         initAnalyze();
