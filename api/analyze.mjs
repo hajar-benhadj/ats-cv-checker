@@ -1,6 +1,6 @@
 // Vercel serverless function — keeps the OpenRouter key server-side.
 // Node-style (req, res) handler for maximum runtime compatibility.
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const ALLOWED_ORIGINS = [
     'https://hajar-benhadj.github.io',
