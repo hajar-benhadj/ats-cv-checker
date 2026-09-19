@@ -93,7 +93,7 @@ export default async function handler(req, res) {
 
 async function callOpenRouter(key, model, cv, job, lang, rulesFailed) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 50000);
+    const timer = setTimeout(() => controller.abort(), 55000);
     try {
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',

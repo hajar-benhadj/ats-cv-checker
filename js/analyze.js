@@ -13,12 +13,28 @@
      * @returns {Promise<object>} normalized result
      */
     async function analyze(cvText, jobText, rulesFailed, lang) {
+        const payload = JSON.stringify({ cv: cvText, job: jobText, rulesFailed: (rulesFailed || []).map((f) => f.issue), lang });
+
+        // Free models have variable queue times — retry once automatically.
+        let lastErr = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                return await runOnce(payload);
+            } catch (e) {
+                lastErr = e;
+                if (attempt === 1) await new Promise((r) => setTimeout(r, 8000));
+            }
+        }
+        throw lastErr || new Error('Analysis failed.');
+    }
+
+    async function runOnce(payload) {
         let res;
         try {
             res = await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cv: cvText, job: jobText, rulesFailed: (rulesFailed || []).map((f) => f.issue), lang }),
+                body: payload,
             });
         } catch (e) {
             throw new Error('Network error — check your connection and retry.');
