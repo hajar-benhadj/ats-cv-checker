@@ -79,7 +79,21 @@ export default async function handler(req, res) {
     const model = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-v4-flash-0731:free';
 
     try {
-        const aiText = await callOpenRouter(key, model, cv, job, lang, rulesFailed);
+        // Validate the AI actually returned complete JSON; retry once if truncated.
+        let aiText = null;
+        let lastErr = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                const text = await callOpenRouter(key, model, cv, job, lang, rulesFailed);
+                JSON.parse(String(text).replace(/```json|```/g, '').trim()); // throws if truncated
+                aiText = text;
+                break;
+            } catch (e) {
+                lastErr = e;
+            }
+        }
+        if (aiText === null) throw lastErr || new Error('AI returned invalid JSON twice.');
+
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'no-store');
         res.statusCode = 200;
@@ -107,7 +121,7 @@ async function callOpenRouter(key, model, cv, job, lang, rulesFailed) {
             body: JSON.stringify({
                 model,
                 temperature: 0.2,
-                max_tokens: 3500,
+                max_tokens: 6000,
                 response_format: { type: 'json_object' },
                 messages: [
                     { role: 'system', content: systemPrompt(lang) },
