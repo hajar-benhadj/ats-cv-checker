@@ -144,7 +144,7 @@
             inExperience: '📍 dans l\u2019expérience', inProjects: '📍 dans les projets', skillsOnly: 'liste de compétences seulement',
             addTitle: '✅ À ajouter',
             addWhy: 'Pourquoi',
-            example: 'Formulation suggérée (uniquement si c\u2019est vrai pour vous)',
+            exampleLabel: 'Formulation suggérée (uniquement si c\u2019est vrai pour vous)',
             removeTitle: '❌ À retirer / couper',
             improveTitle: '✏️ À améliorer',
             rulesTitle: '⚡ Vérifications du formatage ATS (règles)',
