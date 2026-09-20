@@ -234,7 +234,7 @@
                 return;
             }
             box.innerHTML = '<h2 class="card-title">✨ ' + esc(t('rewritesTitle')) +
-                ' <span class="badge-count" style="background:rgba(129,140,248,.15);color:#a5b4fc;">' + rewrites.length + '</span></h2>' +
+                ' <span class="badge-count" style="background:#f3effd;color:#7c5cd6;">' + rewrites.length + '</span></h2>' +
                 '<div class="grid gap-3">' + rewrites.map((r, i) =>
                     '<div class="item-card rewrite-card">' +
                     '<div class="rw-orig"><span class="rw-label">' + esc(t('originalLabel')) + '</span>' + esc(r.original) + '</div>' +
@@ -271,7 +271,7 @@
         saveHistory(a);
         renderHistory();
     }
-    function scoreColor(score) { return score >= 70 ? '#34d399' : score >= 45 ? '#fbbf24' : '#f87171'; }
+    function scoreColor(score) { return score >= 70 ? '#12855f' : score >= 45 ? '#d99a1e' : '#cf3a5a'; }
     function renderHistory() {
         const box = $('history');
         if (!box) return;
@@ -314,10 +314,10 @@
     // ---------- rendering ----------
     function ring(score) {
         const r = 56, c = 2 * Math.PI * r, off = c * (1 - score / 100);
-        const color = score >= 70 ? '#34d399' : score >= 45 ? '#fbbf24' : '#f87171';
+        const color = score >= 70 ? '#12855f' : score >= 45 ? '#d99a1e' : '#cf3a5a';
         return '<div class="score-ring"><svg width="130" height="130" viewBox="0 0 130 130">' +
-            '<circle cx="65" cy="65" r="' + r + '" fill="none" stroke="rgba(148,163,184,.15)" stroke-width="10"/>' +
-            '<circle cx="65" cy="65" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="10" stroke-linecap="round" stroke-dasharray="' + c + '" stroke-dashoffset="' + off + '"/>' +
+            '<circle cx="65" cy="65" r="' + r + '" fill="none" stroke="rgba(0,0,0,.07)" stroke-width="9"/>' +
+            '<circle cx="65" cy="65" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + c + '" stroke-dashoffset="' + off + '"/>' +
             '</svg><div class="num">' + score + '<small>' + esc(t('overall')) + '</small></div></div>';
     }
 
@@ -409,7 +409,7 @@
         sectionsHtml.forEach((sec) => {
             if (!sec.items.length) return;
             html += '<div class="card"><h2 class="card-title">' + sec.cls + ' ' + esc(sec.title) +
-                ' <span class="badge-count" style="background:rgba(56,189,248,.15);color:#7dd3fc;">' + sec.items.length + '</span></h2>' +
+                ' <span class="badge-count">' + sec.items.length + '</span></h2>' +
                 '<div class="grid gap-3 md:grid-cols-2">' + sec.items.map((i) => itemCard(i, sec.withExample)).join('') + '</div></div>';
         });
 
@@ -417,7 +417,7 @@
         html += '<div id="rewrites-box" class="card"></div>';
 
         // rule-based checks
-        html += '<div class="card"><h2 class="card-title">⚡ ' + esc(t('rulesTitle')) + ' <span class="badge-count" style="background:' + (rules.failed.length ? 'rgba(248,113,113,.15);color:#fca5a5' : 'rgba(52,211,153,.15);color:#6ee7b7') + ';">' + rules.failed.length + '</span></h2>';
+        html += '<div class="card"><h2 class="card-title">⚡ ' + esc(t('rulesTitle')) + ' <span class="badge-count"' + (rules.failed.length ? ' style="background:#fdf0f2;color:#cf3a5a;"' : ' style="background:#eefaf3;color:#12855f;"') + '>' + rules.failed.length + '</span></h2>';
         if (rules.failed.length) {
             html += '<div class="grid gap-3 md:grid-cols-2">' + rules.failed.map((f) =>
                 '<div class="item-card"><div class="font-semibold">⚠️ ' + esc(f.issue) + '</div><div class="why">→ ' + esc(f.fix) + '</div></div>').join('') + '</div>';
@@ -459,7 +459,7 @@
         let y = 0;
 
         // header band
-        doc.setFillColor(2, 132, 199);
+        doc.setFillColor(224, 85, 140);
         doc.rect(0, 0, W, 24, 'F');
         doc.setTextColor(255);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
@@ -484,11 +484,11 @@
             ensure(10);
             doc.setFontSize(9); doc.setTextColor(71, 85, 105);
             doc.text(String(pair[0]), M, y);
-            doc.setFillColor(226, 232, 240);
+            doc.setFillColor(240, 234, 226);
             doc.rect(W - M - 60, y - 3.5, 60, 3.5, 'F');
-            doc.setFillColor(14, 165, 233);
+            doc.setFillColor(224, 85, 140);
             doc.rect(W - M - 60, y - 3.5, 60 * pair[1] / 100, 3.5, 'F');
-            doc.setTextColor(15, 23, 42);
+            doc.setTextColor(51, 48, 46);
             doc.text(String(pair[1]), W - M - 64, y, { align: 'right' });
             y += 7;
         });
@@ -588,37 +588,37 @@
         canvas.width = 1200; canvas.height = 630;
         const ctx = canvas.getContext('2d');
 
-        ctx.fillStyle = '#0b1120';
+        ctx.fillStyle = '#fdfcfa';
         ctx.fillRect(0, 0, 1200, 630);
         const blob = (x, y, r, color) => {
             const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-            g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+            g.addColorStop(0, color); g.addColorStop(1, 'rgba(255,255,255,0)');
             ctx.fillStyle = g; ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
         };
-        blob(150, 110, 320, 'rgba(14,165,233,.35)');
-        blob(1060, 540, 340, 'rgba(99,102,241,.35)');
+        blob(150, 110, 320, 'rgba(236,114,182,.22)');
+        blob(1060, 540, 340, 'rgba(196,181,253,.28)');
 
         ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'left';
-        ctx.fillStyle = '#e2e8f0';
+        ctx.fillStyle = '#33302e';
         ctx.font = '800 46px "Plus Jakarta Sans", system-ui, sans-serif';
         ctx.fillText('🎯 CV Lens', 70, 100);
-        ctx.fillStyle = '#94a3b8';
+        ctx.fillStyle = '#8d8579';
         ctx.font = '600 24px "Plus Jakarta Sans", system-ui, sans-serif';
         ctx.fillText(t('overall'), 70, 138);
 
         const verdict = s.overall >= 70 ? 'strong' : s.overall >= 45 ? 'possible' : 'weak';
-        const vCol = s.overall >= 70 ? '#34d399' : s.overall >= 45 ? '#fbbf24' : '#f87171';
+        const vCol = s.overall >= 70 ? '#12855f' : s.overall >= 45 ? '#d99a1e' : '#cf3a5a';
         ctx.fillStyle = vCol;
         ctx.font = '800 32px "Plus Jakarta Sans", system-ui, sans-serif';
         ctx.fillText(t('verdict')[verdict], 70, 205);
 
         // mini stats on the left
         [[t('subMust'), s.must_haves, 240], [t('subKw'), s.keywords, 380], [t('subFmt'), s.format, 520]].forEach((p) => {
-            ctx.fillStyle = '#7dd3fc';
+            ctx.fillStyle = '#e0558c';
             ctx.font = '800 40px "Plus Jakarta Sans", system-ui, sans-serif';
             ctx.fillText(p[1] + '%', 70, p[2]);
-            ctx.fillStyle = '#94a3b8';
+            ctx.fillStyle = '#8d8579';
             ctx.font = '600 20px "Plus Jakarta Sans", system-ui, sans-serif';
             ctx.fillText(String(p[0]), 70, p[2] + 26);
         });
@@ -626,19 +626,19 @@
         // score ring on the right
         const cx = 930, cy = 300, r = 165;
         ctx.lineWidth = 30;
-        ctx.strokeStyle = 'rgba(148,163,184,.15)';
+        ctx.strokeStyle = 'rgba(0,0,0,.07)';
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
         ctx.strokeStyle = vCol; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * s.overall / 100); ctx.stroke();
         ctx.textAlign = 'center';
-        ctx.fillStyle = '#e2e8f0';
+        ctx.fillStyle = '#33302e';
         ctx.font = '800 105px "Plus Jakarta Sans", system-ui, sans-serif';
         ctx.fillText(String(s.overall), cx, cy + 18);
-        ctx.fillStyle = '#94a3b8';
+        ctx.fillStyle = '#8d8579';
         ctx.font = '700 30px "Plus Jakarta Sans", system-ui, sans-serif';
         ctx.fillText('/100', cx, cy + 56);
 
-        ctx.fillStyle = '#64748b';
+        ctx.fillStyle = '#a89f92';
         ctx.font = '600 22px "Plus Jakarta Sans", system-ui, sans-serif';
         ctx.fillText('hajar-benhadj.github.io/ats-cv-checker', 600, 595);
 
