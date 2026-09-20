@@ -136,6 +136,10 @@ async function callOpenRouter(key, model, cv, job, lang, rulesFailed) {
                 const err = await res.json();
                 msg = (err.error && (err.error.message || err.error.type)) || msg;
             } catch (e) { /* ignore */ }
+            // free-tier provider hiccups are transient — tell the user to just retry
+            if (/provider returned error|rate limit|429/i.test(String(msg))) {
+                throw new Error('The free AI provider is busy right now — please press Analyze again.');
+            }
             throw new Error('AI provider: ' + msg);
         }
 
