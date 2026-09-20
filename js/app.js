@@ -329,7 +329,7 @@
 
     function itemCard(item, withExample) {
         let html = '<div class="item-card"><div class="font-semibold">' + esc(item.what) + '</div><div class="why">' + esc(item.why) + '</div>';
-        if (withExample && item.example) html += '<div class="example">💡 ' + esc(t('example')) + ': ' + esc(item.example) + '</div>';
+        if (withExample && item.example) html += '<div class="example">💡 ' + esc(t('exampleLabel')) + ': ' + esc(item.example) + '</div>';
         html += '</div>';
         return html;
     }
