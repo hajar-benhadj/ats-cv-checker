@@ -149,8 +149,8 @@ table.kw tr:last-child td { border-bottom: none; }
 .hist-del:hover { color: #fca5a5; background: rgba(248, 113, 113, .1); }
 
 /* AI rewrites */
-.rewrite-card .rw-orig { color: var(--muted); font-size: 0.85rem; padding: 8px 10px; background: rgba(148, 163, 184, .06); border-radius: 8px; }
-.rewrite-card .rw-better { margin-top: 8px; padding: 10px 12px; border-left: 3px solid var(--ok); background: rgba(52, 211, 153, .07); border-radius: 0 8px 8px 0; font-size: 0.9rem; position: relative; padding-right: 90px; }
+.rewrite-card .rw-orig { color: var(--muted); font-size: 0.85rem; padding: 8px 10px; background: rgba(148, 163, 184, .06); border-radius: 8px; overflow-wrap: break-word; }
+.rewrite-card .rw-better { margin-top: 8px; padding: 10px 12px; border-left: 3px solid var(--ok); background: rgba(52, 211, 153, .07); border-radius: 0 8px 8px 0; font-size: 0.9rem; position: relative; padding-inline-end: 92px; overflow-wrap: break-word; }
 .rw-label { display: inline-block; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-inline-end: 8px; }
 .rw-label.ok { color: #6ee7b7; }
 .rewrite-card .rw-copy { position: absolute; top: 6px; inset-inline-end: 8px; padding: 3px 10px; font-size: 0.72rem; }

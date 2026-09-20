@@ -221,7 +221,7 @@
             overall: 'نتيجة التطابق',
             summary: 'الملخص',
             keywordTable: 'جدول مطابقة الكلمات المفتاحية',
-            mustSummary: 'تمت مطابقة {found}/{total} من الكلمات الأساسية',
+            mustSummary: 'تمت مطابقة {found} من {total} كلمات أساسية',
             kwCol: 'الكلمة المفتاحية', importanceCol: 'الأهمية', statusCol: 'الحالة', evidenceCol: 'الدليل من سيرتك',
             found: 'موجودة', partial: 'جزئية', missing: 'ناقصة',
             mustLabel: 'أساسية', niceLabel: 'إضافية',
