@@ -60,7 +60,7 @@ Most companies run CVs through an **ATS (Applicant Tracking System)** before a h
  │ rule-based ATS checks     │ ────────► │ (key = env secret, never    │
  │ render scores & evidence  │ ◄──────── │  shipped to clients)        │
  └───────────────────────────┘  JSON     │ JSON validated + auto-retry │
-                                       └─────────────────────────────┘
+                                         └─────────────────────────────┘
 ```
 
 Hybrid accuracy: **deterministic rules in the browser** + a **strict evidence-based AI prompt** (temperature 0.2, JSON schema, model fallback chain) that is explicitly forbidden from inventing experience.
