@@ -5,6 +5,7 @@
     const $ = (id) => document.getElementById(id);
     const t = (k) => window.I18N.t(k);
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const hasText = (s) => /\p{L}/u.test(String(s || ''));
 
     // current analysis context (used by rewrite / PDF / share / history)
     let currentCtx = null;
@@ -382,9 +383,9 @@
 
         // 4 — one clearly-typed card per action: add / improve / remove
         const actionCards = [
-            { key: 'addTitle', icon: '✅', cls: 'add', color: '#12855f', items: result.add.map((a) => ({ head: a.what, body: a.why, ex: a.example || '' })) },
-            { key: 'improveTitle', icon: '✏️', cls: 'improve', color: '#b97a10', items: result.improve.map((i) => ({ head: i.section + ' — ' + i.suggestion, before: i.before, after: i.after })) },
-            { key: 'removeTitle', icon: '❌', cls: 'remove', color: '#cf3a5a', items: result.remove.map((r) => ({ head: r.what, body: r.why })) },
+            { key: 'addTitle', icon: '✅', cls: 'add', color: '#12855f', items: result.add.map((a) => ({ head: a.what, body: a.why, ex: a.example || '' })).filter((it) => hasText(it.head) || hasText(it.body)) },
+            { key: 'improveTitle', icon: '✏️', cls: 'improve', color: '#b97a10', items: result.improve.map((i) => ({ head: i.section + ' — ' + i.suggestion, before: i.before, after: i.after })).filter((it) => hasText(it.head)) },
+            { key: 'removeTitle', icon: '❌', cls: 'remove', color: '#cf3a5a', items: result.remove.map((r) => ({ head: r.what, body: r.why })).filter((it) => hasText(it.head) || hasText(it.body)) },
         ];
         actionCards.forEach((sec) => {
             if (!sec.items.length) return;
@@ -605,9 +606,9 @@
 
         // ---- add / improve / remove as numbered lists ----
         const lists = [
-            { title: t('addTitle'), color: GREEN, items: result.add.map((a) => ({ head: a.what, body: a.why, ex: a.example || '' })) },
-            { title: t('improveTitle'), color: AMBER, items: result.improve.map((i) => ({ head: i.section + ' - ' + i.suggestion, body: (i.before || i.after) ? '"' + (i.before || '...') + '"  ->  "' + (i.after || '...') + '"' : '', ex: '' })) },
-            { title: t('removeTitle'), color: RED, items: result.remove.map((r) => ({ head: r.what, body: r.why, ex: '' })) },
+            { title: t('addTitle'), color: GREEN, items: result.add.map((a) => ({ head: a.what, body: a.why, ex: a.example || '' })).filter((it) => hasText(it.head) || hasText(it.body)) },
+            { title: t('improveTitle'), color: AMBER, items: result.improve.map((i) => ({ head: i.section + ' - ' + i.suggestion, body: (i.before || i.after) ? '"' + (i.before || '...') + '"  ->  "' + (i.after || '...') + '"' : '', ex: '' })).filter((it) => hasText(it.head)) },
+            { title: t('removeTitle'), color: RED, items: result.remove.map((r) => ({ head: r.what, body: r.why, ex: '' })).filter((it) => hasText(it.head) || hasText(it.body)) },
         ];
         lists.forEach((sec) => {
             if (!sec.items.length) return;
@@ -643,7 +644,7 @@
         section(t('rulesTitle'), rules.failed.length, rules.failed.length ? RED : GREEN);
         rules.failed.forEach((f) => {
             setFont('bold', 9, INK);
-            const head = doc.splitTextToSize('! ' + pdfSafe(f.issue), CW - 9);
+            const head = doc.splitTextToSize(pdfSafe(f.issue), CW - 9);
             setFont('normal', 8.5, MUTED);
             const body = doc.splitTextToSize(pdfSafe(f.fix), CW - 9);
             const h = head.length * 4.2 + body.length * 3.9 + 3.5;

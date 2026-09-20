@@ -70,14 +70,16 @@
                 status: ['found', 'partial', 'missing'].includes(k.status) ? k.status : 'missing',
                 evidence: String(k.evidence || ''),
             })),
-            add: (Array.isArray(parsed.add) ? parsed.add : []).slice(0, 8).map(normItem),
-            remove: (Array.isArray(parsed.remove) ? parsed.remove : []).slice(0, 6).map(normItem),
+            add: (Array.isArray(parsed.add) ? parsed.add : []).slice(0, 8).map(normItem)
+                .filter((i) => hasText(i.what) || hasText(i.why)),
+            remove: (Array.isArray(parsed.remove) ? parsed.remove : []).slice(0, 6).map(normItem)
+                .filter((i) => hasText(i.what) || hasText(i.why)),
             improve: (Array.isArray(parsed.improve) ? parsed.improve : []).slice(0, 8).map((i) => ({
                 section: String(i.section || ''),
                 suggestion: String(i.suggestion || ''),
                 before: String(i.before || ''),
                 after: String(i.after || ''),
-            })),
+            })).filter((i) => hasText(i.section) || hasText(i.suggestion) || hasText(i.before) || hasText(i.after)),
             summary: String(parsed.summary || ''),
         };
     }
@@ -141,6 +143,10 @@
     function normItem(i) {
         return { what: String(i.what || i.section || ''), why: String(i.why || i.suggestion || ''), example: String(i.example || '') };
     }
+
+    // a field counts as content only if it holds at least one real letter
+    // (models sometimes emit emoji-only or whitespace-only items)
+    function hasText(s) { return /\p{L}/u.test(String(s || '')); }
 
     window.CvAnalyze = { analyze, rewrite };
 })();
