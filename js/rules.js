@@ -81,12 +81,25 @@
 
     /**
      * Where does this keyword actually live in the CV?
+     * Tries the full phrase first, then falls back to the phrase's significant
+     * tokens (AI keywords are often long phrases like "Node.js REST API development").
      * @returns {'experience'|'projects'|'education'|'skills'|'other'|''}
      */
+    const PLACEMENT_STOP = new Set(['and', 'or', 'the', 'with', 'for', 'of', 'in', 'to', 'a', 'an', 'your', 'our', 'their', 'using', 'use', 'used', 'plus', 'strong', 'good', 'knowledge', 'skills', 'skill', 'experience', 'years', 'year', 'ability', 'able', 'work', 'working', 'team', 'teams', 'new', 'development', 'developer', 'related']);
+
     function locateKeyword(term, sections) {
         const re = termRegex(term);
         const order = ['experience', 'projects', 'education', 'skills'];
         for (const k of order) if (sections[k] && re.test(sections[k])) return k;
+
+        const tokens = String(term).toLowerCase().split(/[^a-z0-9+#.]+/)
+            .filter((s) => s.length >= 3 && !PLACEMENT_STOP.has(s));
+        if (tokens.length) {
+            for (const k of order) {
+                if (!sections[k]) continue;
+                if (tokens.some((tok) => termRegex(tok).test(sections[k]))) return k;
+            }
+        }
         for (const k of Object.keys(sections)) if (re.test(sections[k])) return 'other';
         return '';
     }
