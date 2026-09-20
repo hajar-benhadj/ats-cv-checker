@@ -76,23 +76,30 @@ export default async function handler(req, res) {
         return res.end(JSON.stringify({ error: 'CV and job text are required.' }));
     }
 
-    const model = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-v4-flash-0731:free';
+    const models = [
+        process.env.OPENROUTER_MODEL || 'deepseek/deepseek-v4-flash-0731:free',
+        'nvidia/nemotron-3-super-120b-a12b:free', // fallback when the primary free provider hiccups
+    ];
 
     try {
-        // Validate the AI actually returned complete JSON; retry once if truncated.
+        // Validate the AI actually returned complete JSON; try primary then fallback model.
         let aiText = null;
         let lastErr = null;
-        for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-                const text = await callOpenRouter(key, model, cv, job, lang, rulesFailed);
-                JSON.parse(String(text).replace(/```json|```/g, '').trim()); // throws if truncated
-                aiText = text;
-                break;
-            } catch (e) {
-                lastErr = e;
+        for (const model of models) {
+            for (let attempt = 0; attempt < 2 && aiText === null; attempt++) {
+                try {
+                    const text = await callOpenRouter(key, model, cv, job, lang, rulesFailed);
+                    JSON.parse(String(text).replace(/```json|```/g, '').trim()); // throws if truncated
+                    aiText = text;
+                } catch (e) {
+                    lastErr = e;
+                    // provider hiccup on this model → switch model immediately
+                    if (/provider|busy/i.test(String(e.message || ''))) break;
+                }
             }
+            if (aiText !== null) break;
         }
-        if (aiText === null) throw lastErr || new Error('AI returned invalid JSON twice.');
+        if (aiText === null) throw lastErr || new Error('AI returned invalid JSON.');
 
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'no-store');
