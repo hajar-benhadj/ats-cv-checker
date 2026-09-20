@@ -43,39 +43,6 @@
         }
     }
 
-    function loadExample() {
-        $('inp-cv').value = [
-            'HAJAR BENHADJ — Software Developer, Casablanca',
-            'Email: hajar@example.com | +212 612 345 678 | linkedin.com/in/hajar-benhadj | github.com/hajar-benhadj',
-            '',
-            'EXPERIENCE',
-            'Freelance Automation Developer (2024 – Present)',
-            'Developed an n8n automation product sold to small businesses, reducing manual admin work by 80%.',
-            'Built AI integrations with the OpenAI API for document analysis and email summarization.',
-            'Software Engineering Intern — AI Vision Team (2023 – 2024)',
-            'Implemented a real-time fall detection system with OpenCV and MediaPipe (92% precision on 5,000 frames).',
-            'Automated Swagger/OpenAPI REST API test generation with Pytest, cutting test-writing time by 60%.',
-            '',
-            'SKILLS',
-            'Python, JavaScript (ES6+), HTML5, CSS3, OpenAI API, n8n, OpenCV, MediaPipe, Pytest, Git, GitHub Actions.',
-            '',
-            'EDUCATION',
-            'BSc Computer Science — Hassan II University (2020 – 2023)',
-            '',
-            'LANGUAGES',
-            'Arabic (native), French (fluent), English (fluent), German (B1)',
-        ].join('\n');
-        $('inp-job').value = [
-            'Junior Full-Stack Developer (React / Node.js) — TechMart, Casablanca (hybrid)',
-            'We build e-commerce dashboards used by 200+ Moroccan retailers. Team of 5, React + TypeScript + Node.js.',
-            'Required: 1+ year with React and modern JavaScript · Node.js REST API development · TypeScript · SQL (PostgreSQL or MySQL) · French AND English · Git and code review.',
-            'Nice to have: Docker · CI/CD · AWS/GCP · interest in AI features.',
-            'CDI, 12,000–16,000 MAD/month.',
-        ].join('\n');
-        updateStats();
-        setStatus('analyze-status', '');
-    }
-
     function updateStats() {
         $('cv-stats').textContent = $('inp-cv').value.split(/\s+/).filter(Boolean).length;
     }
@@ -233,7 +200,7 @@
                 setStatus('analyze-status', 'ℹ️ ' + t('rewriteEmpty'));
                 return;
             }
-            box.innerHTML = '<h2 class="card-title">✨ ' + esc(t('rewritesTitle')) +
+            box.innerHTML = '<div class="card"><h2 class="card-title">✨ ' + esc(t('rewritesTitle')) +
                 ' <span class="badge-count" style="background:#f3effd;color:#7c5cd6;">' + rewrites.length + '</span></h2>' +
                 '<div class="grid gap-3">' + rewrites.map((r, i) =>
                     '<div class="item-card rewrite-card">' +
@@ -241,7 +208,7 @@
                     '<div class="rw-better"><span class="rw-label ok">' + esc(t('improvedLabel')) + '</span>' + esc(r.rewritten) +
                     '<button class="btn-secondary rw-copy" data-rw="' + i + '">📋 ' + esc(t('copyBullet')) + '</button></div>' +
                     '<div class="why">💡 ' + esc(r.why) + '</div>' +
-                    '</div>').join('') + '</div>';
+                    '</div>').join('') + '</div></div>';
             box.querySelectorAll('.rw-copy').forEach((b) => b.addEventListener('click', () => {
                 const i = +b.getAttribute('data-rw');
                 navigator.clipboard.writeText(rewrites[i].rewritten).then(() => {
@@ -327,11 +294,20 @@
 
     function chip(status) { return '<span class="chip ' + status + '">' + esc(t(status)) + '</span>'; }
 
-    function itemCard(item, withExample) {
-        let html = '<div class="item-card"><div class="font-semibold">' + esc(item.what) + '</div><div class="why">' + esc(item.why) + '</div>';
-        if (withExample && item.example) html += '<div class="example">💡 ' + esc(t('exampleLabel')) + ': ' + esc(item.example) + '</div>';
-        html += '</div>';
-        return html;
+    // one numbered recommendation row (add / improve / remove)
+    function secItem(it, color, idx) {
+        let html = '<div class="sec-item">' +
+            '<span class="num-chip" style="background:' + color + '1e;color:' + color + ';">' + (idx + 1) + '</span>' +
+            '<div class="sec-body"><div class="sec-head">' + esc(it.head) + '</div>';
+        if (it.body) html += '<div class="sec-why">' + esc(it.body) + '</div>';
+        if (it.ex) html += '<div class="example">💡 ' + esc(t('exampleLabel')) + ': ' + esc(it.ex) + '</div>';
+        if (it.before || it.after) {
+            html += '<div class="diff">' +
+                '<div class="diff-row before"><span class="diff-label">' + esc(t('beforeLabel')) + '</span><span class="diff-text">' + esc(it.before || '…') + '</span></div>' +
+                '<div class="diff-row after"><span class="diff-label">' + esc(t('afterLabel')) + '</span><span class="diff-text">' + esc(it.after || '…') + '</span></div>' +
+                '</div>';
+        }
+        return html + '</div></div>';
     }
 
     // where in the CV the keyword actually lives (deterministic, client-side)
@@ -371,7 +347,7 @@
 
         let html = '';
 
-        // header card
+        // 1 — score card (numbers only, no prose)
         html += '<div class="card"><div class="score-wrap">' + ring(s.overall) +
             '<div class="flex-1 min-w-[250px]">' +
             '<div class="flex items-center gap-3 flex-wrap mb-3">' +
@@ -381,11 +357,15 @@
             '<div class="subscores">' +
             subscore(t('subMust'), s.must_haves) + subscore(t('subKw'), s.keywords) +
             subscore(t('subExp'), s.experience) + subscore(t('subEdu'), s.education) + subscore(t('subFmt'), s.format) +
-            '</div></div></div>' +
-            (result.summary ? '<p class="mt-4 text-sm leading-relaxed">' + esc(result.summary) + '</p>' : '') +
-            '</div>';
+            '</div></div></div></div>';
 
-        // keyword table
+        // 2 — summary in its own quote-style card
+        if (result.summary) {
+            html += '<div class="card"><h2 class="card-title">🧾 ' + esc(t('summary')) + '</h2>' +
+                '<p class="sum-text">' + esc(result.summary) + '</p></div>';
+        }
+
+        // 3 — keyword table
         if (kws.length) {
             html += '<div class="card"><h2 class="card-title">🔑 ' + esc(t('keywordTable')) + '</h2>' +
                 (mustKw.length ? '<p class="text-xs opacity-70 mb-2">' + esc(String(t('mustSummary')).replace('{found}', mustFound).replace('{total}', mustKw.length)) + '</p>' : '') +
@@ -400,21 +380,21 @@
             html += '</tbody></table></div></div>';
         }
 
-        // add / improve / remove
-        const sectionsHtml = [
-            { title: t('addTitle'), items: result.add, cls: '✅', withExample: true },
-            { title: t('improveTitle'), items: result.improve.map((i) => ({ what: i.section + ' — ' + i.suggestion, why: '“' + (i.before || '…') + '”  →  “' + (i.after || '…') + '”', example: '' })), cls: '✏️', withExample: false },
-            { title: t('removeTitle'), items: result.remove, cls: '❌', withExample: false },
+        // 4 — one clearly-typed card per action: add / improve / remove
+        const actionCards = [
+            { key: 'addTitle', icon: '✅', cls: 'add', color: '#12855f', items: result.add.map((a) => ({ head: a.what, body: a.why, ex: a.example || '' })) },
+            { key: 'improveTitle', icon: '✏️', cls: 'improve', color: '#b97a10', items: result.improve.map((i) => ({ head: i.section + ' — ' + i.suggestion, before: i.before, after: i.after })) },
+            { key: 'removeTitle', icon: '❌', cls: 'remove', color: '#cf3a5a', items: result.remove.map((r) => ({ head: r.what, body: r.why })) },
         ];
-        sectionsHtml.forEach((sec) => {
+        actionCards.forEach((sec) => {
             if (!sec.items.length) return;
-            html += '<div class="card"><h2 class="card-title">' + sec.cls + ' ' + esc(sec.title) +
-                ' <span class="badge-count">' + sec.items.length + '</span></h2>' +
-                '<div class="grid gap-3 md:grid-cols-2">' + sec.items.map((i) => itemCard(i, sec.withExample)).join('') + '</div></div>';
+            html += '<div class="card sec-card ' + sec.cls + '"><h2 class="card-title">' + sec.icon + ' ' + esc(t(sec.key)) +
+                ' <span class="badge-count" style="background:' + sec.color + '1e;color:' + sec.color + ';">' + sec.items.length + '</span></h2>' +
+                '<div class="sec-items">' + sec.items.map((it, i) => secItem(it, sec.color, i)).join('') + '</div></div>';
         });
 
-        // AI rewrites land here (✨ button below)
-        html += '<div id="rewrites-box" class="card"></div>';
+        // AI rewrites land here (✨ button below) — empty until used
+        html += '<div id="rewrites-box"></div>';
 
         // rule-based checks
         html += '<div class="card"><h2 class="card-title">⚡ ' + esc(t('rulesTitle')) + ' <span class="badge-count"' + (rules.failed.length ? ' style="background:#fdf0f2;color:#cf3a5a;"' : ' style="background:#eefaf3;color:#12855f;"') + '>' + rules.failed.length + '</span></h2>';
@@ -448,6 +428,18 @@
     // ---------- PDF export ----------
     // jsPDF cannot shape Arabic glyphs — in Arabic the browser's own
     // Print → Save as PDF handles it perfectly, so we route there instead.
+    // The built-in helvetica font only covers Latin-1: normalize symbols
+    // (arrows, emoji, smart quotes) before drawing, or they print as garbage.
+    function pdfSafe(str) {
+        return String(str ?? '')
+            .replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"')
+            .replace(/[\u2013\u2014]/g, '-').replace(/\u2192|\u21D2/g, '->')
+            .replace(/[\u2022\u25CF\u00B7]/g, '-').replace(/\u26A0\uFE0F?/g, '!')
+            .replace(/[\u2713\u2714]\uFE0F?/g, 'v').replace(/\u2026/g, '...')
+            .replace(/\s+/g, ' ')
+            .replace(/[^\u0000-\u00FF]/g, '').trim();
+    }
+
     function downloadReport() {
         const result = currentResult, rules = currentRules;
         if (!result || !rules) return;
@@ -455,126 +447,231 @@
 
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-        const W = 210, M = 16;
+        const W = 210, M = 16, CW = W - M * 2;
+        const TOP = 20, BOTTOM = 280;
         let y = 0;
 
-        // header band
-        doc.setFillColor(224, 85, 140);
-        doc.rect(0, 0, W, 24, 'F');
-        doc.setTextColor(255);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
-        doc.text('CV Lens — ' + t('resultsTitle'), M, 11);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-        doc.text(new Date().toLocaleString() + (result.job.title ? '   ·   ' + result.job.title : ''), M, 18);
-        y = 34;
+        const INK = [51, 48, 46], MUTED = [120, 112, 99], ROSE = [224, 85, 140];
+        const GREEN = [18, 133, 95], AMBER = [199, 122, 16], RED = [207, 58, 90];
+        const scoreCol = (v) => (v >= 70 ? GREEN : v >= 45 ? AMBER : RED);
+        const tint = (rgb, f) => rgb.map((c) => Math.round(c + (255 - c) * f));
+        const setFont = (style, size, color) => {
+            doc.setFont('helvetica', style); doc.setFontSize(size);
+            doc.setTextColor(color[0], color[1], color[2]);
+        };
+        const ensure = (h) => { if (y + h > BOTTOM) { doc.addPage(); y = TOP; } };
 
-        const ensure = (h) => { if (y + h > 282) { doc.addPage(); y = 20; } };
+        // section title + right-aligned count pill + thin rule
+        const section = (title, count, color) => {
+            ensure(18);
+            y += 4;
+            setFont('bold', 12, INK);
+            doc.text(pdfSafe(title), M, y);
+            if (count != null) {
+                const label = String(count);
+                setFont('bold', 9.5, color || ROSE);
+                const tw = doc.getTextWidth(label);
+                const bw = tw + 7;
+                const bg = tint(color || ROSE, 0.88);
+                doc.setFillColor(bg[0], bg[1], bg[2]);
+                doc.roundedRect(W - M - bw, y - 4.4, bw, 6, 3, 3, 'F');
+                doc.text(label, W - M - bw / 2, y, { align: 'center' });
+            }
+            y += 2.4;
+            doc.setDrawColor(239, 234, 228); doc.setLineWidth(0.4);
+            doc.line(M, y, W - M, y);
+            y += 5.5;
+        };
 
-        // score + verdict
+        // ---- hero band ----
+        doc.setFillColor(ROSE[0], ROSE[1], ROSE[2]);
+        doc.rect(0, 0, W, 27, 'F');
+        setFont('bold', 16, [255, 255, 255]);
+        doc.text('CV Lens', M, 12);
+        setFont('normal', 9, [255, 235, 244]);
+        doc.text(pdfSafe(t('resultsTitle')), M, 19);
+        setFont('normal', 8, [255, 235, 244]);
+        let meta = new Date().toLocaleDateString();
+        if (result.job.title) meta += '   |   ' + result.job.title;
+        const metaLines = doc.splitTextToSize(pdfSafe(meta), 96);
+        doc.text(metaLines[0] + (metaLines.length > 1 ? '...' : ''), W - M, 19, { align: 'right' });
+        y = 40;
+
+        // ---- score + verdict pill ----
         const s = result.scores;
-        const col = s.overall >= 70 ? [22, 163, 74] : s.overall >= 45 ? [217, 119, 6] : [220, 38, 38];
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(32); doc.setTextColor(col[0], col[1], col[2]);
-        doc.text(s.overall + '/100', M, y);
-        doc.setFontSize(11); doc.setTextColor(71, 85, 105);
-        doc.text(t('verdict')[s.overall >= 70 ? 'strong' : s.overall >= 45 ? 'possible' : 'weak'], M + 45, y);
-        y += 10;
+        const sc = scoreCol(s.overall);
+        setFont('bold', 34, sc);
+        doc.text(String(s.overall), M, y);
+        const scoreW = doc.getTextWidth(String(s.overall));
+        setFont('bold', 12, MUTED);
+        doc.text('/100', M + scoreW + 1.5, y);
+        const verdict = s.overall >= 70 ? 'strong' : s.overall >= 45 ? 'possible' : 'weak';
+        const vLabel = pdfSafe(t('verdict')[verdict]);
+        setFont('bold', 11, sc);
+        const vw = doc.getTextWidth(vLabel);
+        const vx = M + scoreW + 16;
+        const vbg = tint(sc, 0.88);
+        doc.setFillColor(vbg[0], vbg[1], vbg[2]);
+        doc.roundedRect(vx, y - 6.2, vw + 8, 8, 4, 4, 'F');
+        doc.text(vLabel, vx + 4, y);
 
-        // subscore bars
-        [[t('subMust'), s.must_haves], [t('subKw'), s.keywords], [t('subExp'), s.experience], [t('subEdu'), s.education], [t('subFmt'), s.format]].forEach((pair) => {
-            ensure(10);
-            doc.setFontSize(9); doc.setTextColor(71, 85, 105);
-            doc.text(String(pair[0]), M, y);
+        // ---- subscore bars ----
+        const subs = [[t('subMust'), s.must_haves], [t('subKw'), s.keywords], [t('subExp'), s.experience], [t('subEdu'), s.education], [t('subFmt'), s.format]];
+        subs.forEach((p) => {
+            y += 7.5;
+            ensure(9);
+            setFont('normal', 9, MUTED);
+            doc.text(pdfSafe(p[0]), M, y);
+            const bx = M + 92, bw = W - M - 11 - bx;
             doc.setFillColor(240, 234, 226);
-            doc.rect(W - M - 60, y - 3.5, 60, 3.5, 'F');
-            doc.setFillColor(224, 85, 140);
-            doc.rect(W - M - 60, y - 3.5, 60 * pair[1] / 100, 3.5, 'F');
-            doc.setTextColor(51, 48, 46);
-            doc.text(String(pair[1]), W - M - 64, y, { align: 'right' });
-            y += 7;
+            doc.roundedRect(bx, y - 3, bw, 3.2, 1.6, 1.6, 'F');
+            const col = scoreCol(p[1]);
+            doc.setFillColor(col[0], col[1], col[2]);
+            const fillW = bw * p[1] / 100;
+            if (fillW > 0.5) doc.roundedRect(bx, y - 3, fillW, 3.2, 1.6, 1.6, 'F');
+            setFont('bold', 9, INK);
+            doc.text(String(p[1]), W - M, y, { align: 'right' });
         });
         y += 2;
 
-        // summary
+        // ---- summary in a soft accent box ----
         if (result.summary) {
-            ensure(16);
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
-            doc.text(t('summary'), M, y); y += 5;
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(51, 65, 85);
-            doc.text(doc.splitTextToSize(result.summary, W - M * 2), M, y);
-            y += doc.splitTextToSize(result.summary, W - M * 2).length * 4.5 + 4;
+            section(t('summary'));
+            setFont('normal', 9.5, INK);
+            const lines = doc.splitTextToSize(pdfSafe(result.summary), CW - 12);
+            const lh = 4.6;
+            const boxH = lines.length * lh + 7;
+            ensure(boxH + 3);
+            doc.setFillColor(250, 248, 245);
+            doc.roundedRect(M, y - 4, CW, boxH, 3, 3, 'F');
+            doc.setFillColor(ROSE[0], ROSE[1], ROSE[2]);
+            doc.roundedRect(M, y - 4, 1.6, boxH, 0.8, 0.8, 'F');
+            lines.forEach((ln, i) => doc.text(ln, M + 7, y + 1.5 + i * lh));
+            y += boxH + 4;
         }
 
-        // keyword table
+        // ---- keyword table (measured columns, page-break safe) ----
         if (result.keyword_table.length) {
-            ensure(20);
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
-            doc.text(t('keywordTable'), M, y); y += 6;
-            doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
-            doc.text(t('kwCol'), M, y);
-            doc.text(t('importanceCol'), M + 62, y);
-            doc.text(t('statusCol'), M + 92, y);
-            doc.text(t('evidenceCol'), M + 118, y);
-            y += 2; doc.setDrawColor(226, 232, 240); doc.line(M, y, W - M, y); y += 4;
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-            result.keyword_table.forEach((k) => {
-                const kwLines = doc.splitTextToSize(String(k.keyword || ''), 58);
-                ensure(kwLines.length * 4 + 3);
-                doc.setTextColor(15, 23, 42);
-                doc.text(kwLines, M, y);
-                doc.setTextColor(100, 116, 139);
-                doc.text(t(k.importance === 'must' ? 'mustLabel' : 'niceLabel'), M + 62, y);
-                const st = { found: [22, 163, 74], partial: [217, 119, 6], missing: [220, 38, 38] }[k.status] || [100, 116, 139];
-                doc.setTextColor(st[0], st[1], st[2]);
-                doc.text(t(k.status), M + 92, y);
-                if (k.evidence) {
-                    doc.setTextColor(100, 116, 139);
-                    doc.text(doc.splitTextToSize(String(k.evidence).slice(0, 60), 66), M + 118, y);
-                }
-                y += kwLines.length * 4 + 2.5;
+            const sev = { missing: 0, partial: 1, found: 2 };
+            const kws = result.keyword_table.slice().sort((a, b) =>
+                a.importance === b.importance ? sev[a.status] - sev[b.status] : (a.importance === 'must' ? -1 : 1));
+            const missing = kws.filter((k) => k.status === 'missing').length;
+            section(t('keywordTable'), missing, missing ? RED : GREEN);
+            const c0 = M, w0 = 50;
+            const c1 = c0 + w0 + 4, w1 = 24;
+            const c2 = c1 + w1 + 4, w2 = 21;
+            const c3 = c2 + w2 + 4, w3 = W - M - c3;
+            const clip = (str, size, width, style, color) => {
+                setFont(style, size, color);
+                const lines = doc.splitTextToSize(pdfSafe(str), width);
+                return lines.length > 1 ? lines[0] + '...' : (lines[0] || '');
+            };
+            const drawHead = () => {
+                doc.setFillColor(250, 248, 245);
+                doc.rect(M, y - 3.2, CW, 5.8, 'F');
+                setFont('bold', 7.5, MUTED);
+                doc.text(pdfSafe(t('kwCol')), c0 + 1.5, y);
+                doc.text(pdfSafe(t('importanceCol')), c1, y);
+                doc.text(pdfSafe(t('statusCol')), c2, y);
+                doc.text(pdfSafe(t('evidenceCol')), c3, y);
+                y += 6;
+            };
+            drawHead();
+            kws.forEach((k) => {
+                setFont('bold', 8.5, INK);
+                const kw = doc.splitTextToSize(pdfSafe(k.keyword), w0);
+                const imp = clip(t(k.importance === 'must' ? 'mustLabel' : 'niceLabel'), 8, w1, 'normal', MUTED);
+                const stCol = { found: GREEN, partial: AMBER, missing: RED }[k.status] || MUTED;
+                const st = clip(t(k.status), 8, w2, 'bold', stCol);
+                setFont('normal', 7.5, MUTED);
+                const ev = k.evidence ? doc.splitTextToSize(pdfSafe(k.evidence), w3).slice(0, 2) : [];
+                const lh = 3.7;
+                const rowH = Math.max(kw.length, ev.length, 1) * lh + 2.8;
+                if (y + rowH > BOTTOM) { doc.addPage(); y = TOP; drawHead(); }
+                setFont('bold', 8.5, INK);
+                kw.forEach((ln, i) => doc.text(ln, c0 + 1.5, y + i * lh));
+                setFont('normal', 8, MUTED);
+                doc.text(imp, c1, y);
+                setFont('bold', 8, stCol);
+                doc.text(st, c2, y);
+                setFont('normal', 7.5, MUTED);
+                ev.forEach((ln, i) => doc.text(ln, c3, y + i * lh));
+                y += rowH;
+                doc.setDrawColor(242, 238, 233); doc.setLineWidth(0.3);
+                doc.line(M, y - 1.4, W - M, y - 1.4);
             });
             y += 3;
         }
 
-        // add / improve / remove sections
-        [['✅ ' + t('addTitle'), result.add, true],
-         ['✏️ ' + t('improveTitle'), result.improve.map((i) => ({ what: i.section + ' — ' + i.suggestion, why: '“' + (i.before || '…') + '” → “' + (i.after || '…') + '”', example: '' })), false],
-         ['❌ ' + t('removeTitle'), result.remove, false]].forEach((sec) => {
-            if (!sec[1].length) return;
-            ensure(14);
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
-            doc.text(sec[0], M, y); y += 5;
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-            sec[1].forEach((item) => {
-                const lines = doc.splitTextToSize('• ' + item.what + (item.why ? ' — ' + item.why : ''), W - M * 2);
-                ensure(lines.length * 4.5 + 2);
-                doc.setTextColor(51, 65, 85);
-                doc.text(lines, M, y);
-                y += lines.length * 4.5 + 2;
+        // ---- add / improve / remove as numbered lists ----
+        const lists = [
+            { title: t('addTitle'), color: GREEN, items: result.add.map((a) => ({ head: a.what, body: a.why, ex: a.example || '' })) },
+            { title: t('improveTitle'), color: AMBER, items: result.improve.map((i) => ({ head: i.section + ' - ' + i.suggestion, body: (i.before || i.after) ? '"' + (i.before || '...') + '"  ->  "' + (i.after || '...') + '"' : '', ex: '' })) },
+            { title: t('removeTitle'), color: RED, items: result.remove.map((r) => ({ head: r.what, body: r.why, ex: '' })) },
+        ];
+        lists.forEach((sec) => {
+            if (!sec.items.length) return;
+            section(sec.title, sec.items.length, sec.color);
+            sec.items.forEach((it, idx) => {
+                setFont('bold', 9, INK);
+                const head = doc.splitTextToSize(pdfSafe(it.head), CW - 9);
+                setFont('normal', 8.5, MUTED);
+                const body = it.body ? doc.splitTextToSize(pdfSafe(it.body), CW - 9) : [];
+                setFont('italic', 7.5, MUTED);
+                const ex = it.ex ? doc.splitTextToSize(pdfSafe(t('exampleLabel') + ': ' + it.ex), CW - 9) : [];
+                const hl = 4.2, bl = 3.9, el = 3.5;
+                const h = head.length * hl + body.length * bl + ex.length * el + 4;
+                ensure(h + 2);
+                const bg = tint(sec.color, 0.9);
+                doc.setFillColor(bg[0], bg[1], bg[2]);
+                doc.circle(M + 2, y - 1.3, 2.3, 'F');
+                setFont('bold', 8, sec.color);
+                doc.text(String(idx + 1), M + 2, y, { align: 'center' });
+                setFont('bold', 9, INK);
+                head.forEach((ln, i) => doc.text(ln, M + 8, y + i * hl));
+                let yy = y + head.length * hl;
+                setFont('normal', 8.5, MUTED);
+                body.forEach((ln, i) => doc.text(ln, M + 8, yy + i * bl));
+                yy += body.length * bl;
+                setFont('italic', 7.5, MUTED);
+                ex.forEach((ln, i) => doc.text(ln, M + 8, yy + i * el));
+                y += h + 1.5;
             });
-            y += 3;
         });
 
-        // rule-based checks
-        if (rules.failed.length) {
-            ensure(14);
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
-            doc.text(t('rulesTitle'), M, y); y += 5;
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-            rules.failed.forEach((f) => {
-                const lines = doc.splitTextToSize('⚠ ' + f.issue + ' → ' + f.fix, W - M * 2);
-                ensure(lines.length * 4.5 + 2);
-                doc.setTextColor(51, 65, 85);
-                doc.text(lines, M, y);
-                y += lines.length * 4.5 + 2;
-            });
+        // ---- rule-based checks ----
+        section(t('rulesTitle'), rules.failed.length, rules.failed.length ? RED : GREEN);
+        rules.failed.forEach((f) => {
+            setFont('bold', 9, INK);
+            const head = doc.splitTextToSize('! ' + pdfSafe(f.issue), CW - 9);
+            setFont('normal', 8.5, MUTED);
+            const body = doc.splitTextToSize(pdfSafe(f.fix), CW - 9);
+            const h = head.length * 4.2 + body.length * 3.9 + 3.5;
+            ensure(h + 2);
+            doc.setFillColor(253, 240, 242);
+            doc.circle(M + 2, y - 1.3, 2.3, 'F');
+            setFont('bold', 8, RED);
+            doc.text('!', M + 2, y, { align: 'center' });
+            setFont('bold', 9, INK);
+            head.forEach((ln, i) => doc.text(ln, M + 8, y + i * 4.2));
+            let yy = y + head.length * 4.2;
+            setFont('normal', 8.5, MUTED);
+            body.forEach((ln, i) => doc.text(ln, M + 8, yy + i * 3.9));
+            y += h + 1.5;
+        });
+        if (rules.passed.length) {
+            ensure(8);
+            setFont('normal', 8.5, GREEN);
+            doc.text(doc.splitTextToSize(pdfSafe('v  ' + rules.passed.join('   ·   ')), CW), M, y);
         }
 
-        // footer on every page
+        // ---- footer on every page ----
         const pages = doc.internal.getNumberOfPages();
         for (let i = 1; i <= pages; i++) {
             doc.setPage(i);
-            doc.setFontSize(8); doc.setTextColor(148, 163, 184);
-            doc.text('CV Lens — hajar-benhadj.github.io/ats-cv-checker', W / 2, 291, { align: 'center' });
+            setFont('normal', 8, [168, 160, 146]);
+            doc.text('CV Lens  -  hajar-benhadj.github.io/ats-cv-checker', M, 291);
+            doc.text(i + ' / ' + pages, W - M, 291, { align: 'right' });
         }
         doc.save('cv-lens-report.pdf');
     }
@@ -694,8 +791,6 @@
         initAnalyze();
         window.I18N.apply();
         $('lang-select').addEventListener('change', (e) => window.I18N.setLang(e.target.value));
-        const ex = $('btn-example');
-        if (ex) ex.addEventListener('click', loadExample);
         updateStats();
         renderHistory();
     });
