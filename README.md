@@ -42,7 +42,11 @@ Most companies run CVs through an **ATS (Applicant Tracking System)** before a h
 | 🕘 **History** | Last 10 analyses kept in localStorage — reopen any past report (stays on your device) |
 | 📋 **Export** | Copy the full report, **download a PDF report** (jsPDF), print, or **share a score card image** for social media |
 
+![CV Lens — input](docs/screenshot-input.png)
+
 ![CV Lens — results](docs/screenshot-results.png)
+
+![CV Lens — Arabic RTL](docs/screenshot-ar.png)
 
 ## 🔒 Privacy & security
 
