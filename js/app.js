@@ -91,8 +91,14 @@
 
     async function fetchJob() {
         const url = $('inp-job-url').value.trim();
-        const st = $('fetch-status');
         if (!url) return;
+        const text = await fetchJobText(url);
+        if (text) $('inp-job').value = text;
+    }
+
+    // Returns fetched job text, or null (fetch-status explains why).
+    async function fetchJobText(url) {
+        const st = $('fetch-status');
         st.className = 'text-xs mt-1';
         st.classList.remove('hidden');
 
@@ -104,19 +110,19 @@
                     let msg = '';
                     try { msg = (await res.json()).error || ''; } catch (e) { /* not json */ }
                     // login-walled sites: stop trying, tell the user immediately
-                    if (res.status === 451 || /login/i.test(msg)) { st.textContent = '🔒 ' + t('linkedinWarn'); return; }
+                    if (res.status === 451 || /login/i.test(msg)) { st.textContent = '🔒 ' + t('linkedinWarn'); return null; }
                     throw new Error('HTTP ' + res.status);
                 }
                 let text = PROXIES[i].json ? (await res.json()).text : (await res.text());
                 if (PROXIES[i].clean) text = PROXIES[i].clean(String(text).trim());
                 text = String(text || '').trim();
                 if (text.split(/\s+/).filter(Boolean).length < 40) throw new Error('too short');
-                $('inp-job').value = text.slice(0, 15000);
                 st.textContent = '✅ ' + t('fetchOk');
-                return;
+                return text.slice(0, 15000);
             } catch (e) { /* try next */ }
         }
         st.textContent = '⚠️ ' + t('fetchFail');
+        return null;
     }
 
     // ---------- analyze ----------
@@ -138,12 +144,34 @@
     function stopElapsed() { if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; } }
 
     async function runAnalysis() {
+        const btn = $('btn-analyze');
         const cv = $('inp-cv').value.trim();
-        const job = $('inp-job').value.trim();
-        if (cv.length < 100 || job.length < 100) { setStatus('analyze-status', '⚠️ ' + t('needBoth')); return; }
+        let job = $('inp-job').value.trim();
+        const urlField = $('inp-job-url').value.trim();
+        const jobIsUrl = /^https?:\/\/\S{5,}$/i.test(job);
+
+        // Smart link handling: if the job text is missing but a link was given
+        // (in the URL field or pasted as the description), fetch it automatically.
+        if ((job.length < 100 && urlField) || jobIsUrl) {
+            const url = jobIsUrl ? job : urlField;
+            btn.disabled = true;
+            setStatus('analyze-status', '🔗 ' + t('autoFetching'));
+            const text = await fetchJobText(url);
+            btn.disabled = false;
+            if (text) {
+                job = text;
+                $('inp-job').value = text;
+            } else {
+                setStatus('analyze-status', '');
+                return; // fetch-status already explains what happened
+            }
+        }
+
+        if (cv.length < 100 && job.length < 100) { setStatus('analyze-status', '⚠️ ' + t('needBoth')); return; }
+        if (cv.length < 100) { setStatus('analyze-status', '⚠️ ' + t('needCv')); return; }
+        if (job.length < 100) { setStatus('analyze-status', '⚠️ ' + t('needJob')); return; }
 
         const rules = window.CvRules.runRules(cv, window.I18N.get());
-        const btn = $('btn-analyze');
         btn.disabled = true;
         startElapsed();
         $('results').classList.add('hidden');
