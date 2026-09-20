@@ -1,52 +1,79 @@
-# 🎯 CV Lens — ATS CV Checker
+<div align="center">
 
-**Paste your CV + a job posting. See exactly which keywords you're missing, what to add, what to cut — with evidence quoted from your own CV.**
+# 🎯 CV Lens
 
-**Live:** [hajar-benhadj.github.io/ats-cv-checker](https://hajar-benhadj.github.io/ats-cv-checker/)
+### See your CV like an ATS does — before the ATS does.
 
-Works out of the box — visitors don't configure anything.
+**Paste your CV + a job posting. Get the exact keywords you're missing, what to add, and what to cut — with proof quoted from your own CV.**
 
-## Why it's different
+[![Live Demo](https://img.shields.io/badge/Live-hajar--benhadj.github.io%2Fats--cv--checker-38bdf8?style=for-the-badge&logo=github&logoColor=white)](https://hajar-benhadj.github.io/ats-cv-checker/)
+![License](https://img.shields.io/badge/License-MIT-8b5cf6?style=for-the-badge)
+![No signup](https://img.shields.io/badge/No%20signup-No%20tracking-34d399?style=for-the-badge)
+![Languages](https://img.shields.io/badge/UI-English%20·%20Français-f472b6?style=for-the-badge)
 
-Most "ATS checkers" give you a vague score. CV Lens is built for **accuracy**:
+**English · Français** · works on mobile · free forever
 
-- 🧾 **Evidence-based AI analysis** — every missing/partial/found keyword comes with a short quote from your CV (or an honest "no evidence"). The AI is explicitly instructed never to invent experience and to mark uncertain matches as *partial*.
-- ⚡ **Hybrid scoring** — deterministic rule-based checks (contact info, section headings, action verbs, quantified results, single-column layout, dates, length, tone) run *in the browser* on top of the AI analysis, so formatting findings are facts, not hallucinations.
-- 🔒 **No keys in the browser** — the AI key lives only in a serverless function (Vercel) with per-IP rate limiting (10 analyses/hour). The API key is never shipped to clients.
-- 🌍 **English + Français** UI and reports.
-- 📄 **PDF / DOCX / TXT parsing in the browser** (pdf.js + mammoth.js) — files are read locally; only plain text is ever sent to the analysis API. Nothing is stored or logged.
+</div>
 
-## What you get
+---
 
-1. **Match score** with 5 sub-scores (must-haves, keywords, experience, education, ATS formatting) and an honest verdict
-2. **Keyword match table** — every must-have and nice-to-have: FOUND / PARTIAL / MISSING + where in your CV
-3. **✅ Add** — concrete additions with suggested wording ("only if true for you")
-4. **✏️ Improve** — before → after rewrites of your actual lines
-5. **❌ Remove** — what's hurting you for *this* job
-6. **⚡ Rule-based ATS checks** — the mechanical stuff scanners actually reject on
-7. **📋 Copy report** / **🖨️ Print / save as PDF**
+## 💡 The problem
 
-## Architecture
+Most companies run CVs through an **ATS (Applicant Tracking System)** before a human ever sees them. One missing keyword — *TypeScript*, *PostgreSQL*, *anglais courant* — and a qualified candidate is silently filtered out. People get rejected by software for formatting they never knew was wrong.
+
+**CV Lens shows you exactly what that filter sees.**
+
+## ✨ What you get
+
+| | |
+|---|---|
+| 🧾 **Evidence-based keyword table** | Every must-have and nice-to-have from the posting: **FOUND / PARTIAL / MISSING** — each with a short quote from your CV (or an honest "no evidence") |
+| 📊 **Match score + 5 sub-scores** | Must-haves · keywords · experience · education · ATS formatting — with an honest verdict, not flattery |
+| ✅ **Add** | Concrete additions with suggested wording — always phrased *"only if true for you"* |
+| ✏️ **Improve** | Before → after rewrites of your actual lines |
+| ❌ **Remove** | What's hurting you for *this* job specifically |
+| ⚡ **Rule-based ATS checks** | Contact info, section headings, action verbs, quantified results, single-column layout, dates — deterministic facts, not AI guesses |
+| 🔗 **Smart job-link handling** | Paste a job URL and press Analyze — it fetches the posting automatically (server-side, no CORS walls) |
+| 📄 **Client-side document parsing** | PDF / DOCX / TXT read locally with pdf.js + mammoth.js — the file never leaves your device |
+| 📋🖨️ **Export** | Copy the full report, or print/save as PDF |
+
+![CV Lens — results](docs/screenshot-results.png)
+
+## 🔒 Privacy & security
+
+- **Your CV file never leaves your browser** — parsing happens locally; only plain text you submit goes to the analysis API
+- **Nothing is stored or logged** — no accounts, no database, no tracking
+- **No keys in the client** — the AI key lives only in a serverless function (Vercel env secret), never in shipped JavaScript
+- **Rate-limited API** (10 analyses / hour / IP) to prevent abuse
+
+## ⚙️ How it works
 
 ```
-Browser (GitHub Pages)                Serverless (Vercel)
-┌──────────────────────┐   POST /api/analyze   ┌─────────────────────────┐
-│ CV text (parsed      │ ────────────────────► │ rate limit (10/h/IP)    │
-│ locally: pdf.js /    │                       │ → OpenRouter            │
-│ mammoth.js) + job    │ ◄──────────────────── │   (key = env secret)    │
-│ + rule-based checks  │      strict JSON      └─────────────────────────┘
-└──────────────────────┘
+ Browser (GitHub Pages)                  Serverless (Vercel, free tier)
+ ┌───────────────────────────┐           ┌─────────────────────────────┐
+ │ PDF/DOCX parsed locally   │  POST     │ rate limit → OpenRouter AI  │
+ │ rule-based ATS checks     │ ────────► │ (key = env secret, never    │
+ │ render scores & evidence  │ ◄──────── │  shipped to clients)        │
+ └───────────────────────────┘  JSON     │ JSON validated + auto-retry │
+                                       └─────────────────────────────┘
 ```
 
-- `api/analyze.js` — Vercel function (60s max, 50s AI abort, CORS restricted to the site origin)
-- Default model: a free OpenRouter model; change anytime via the `OPENROUTER_MODEL` env var (e.g. `openai/gpt-4o` after topping up credits — faster and even more accurate)
-- `js/rules.js` — deterministic ATS checks
-- `js/analyze.js` — endpoint client + JSON normalization guards
+Hybrid accuracy: **deterministic rules in the browser** + a **strict evidence-based AI prompt** (temperature 0.2, JSON schema, model fallback chain) that is explicitly forbidden from inventing experience.
 
-### Changing the key or model (site owner only)
+## 🛠 Tech stack
 
-Vercel → ats-cv-checker project → Settings → Environment Variables → `OPENROUTER_KEY` / `OPENROUTER_MODEL` → Redeploy.
+**Zero-framework vanilla JS** · Tailwind (CDN) · pdf.js · mammoth.js · Vercel serverless functions · OpenRouter AI · EN/FR i18n
 
-## License
+## 🚀 Run it locally
 
-MIT © Hajar Benhadj
+```bash
+git clone https://github.com/hajar-benhadj/ats-cv-checker.git
+cd ats-cv-checker
+python -m http.server 8080   # open http://localhost:8080
+```
+
+The public API endpoint is already live; to self-host the analysis too, deploy the `api/` functions to your own Vercel and set `OPENROUTER_KEY`.
+
+## 📄 License
+
+MIT © Hajar Benhadj — use it, learn from it, build on it.
