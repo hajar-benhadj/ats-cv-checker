@@ -4,6 +4,7 @@
 
     // Filled with the real deployment URL (see README for how to change it)
     const API_URL = 'https://ats-cv-checker-five.vercel.app/api/analyze';
+    const REWRITE_URL = 'https://ats-cv-checker-five.vercel.app/api/rewrite';
 
     /**
      * @param {string} cvText
@@ -81,6 +82,49 @@
         };
     }
 
+    /**
+     * AI bullet rewrites (separate call so the main analysis stays fast).
+     * @returns {Promise<Array<{original:string, rewritten:string, why:string}>>}
+     */
+    async function rewrite(cvText, jobText, lang) {
+        const payload = JSON.stringify({ cv: cvText, job: jobText, lang });
+
+        let lastErr = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const data = await postJson(REWRITE_URL, payload);
+                let text = String(data.result || '');
+                text = text.replace(/```json|```/g, '').trim();
+                const first = Math.min(...['{', '['].map((c) => { const i = text.indexOf(c); return i === -1 ? Infinity : i; }));
+                if (first > 0) text = text.slice(first);
+                const parsed = JSON.parse(text);
+                const list = Array.isArray(parsed.rewrites) ? parsed.rewrites : [];
+                return list.slice(0, 6).map((r) => ({
+                    original: String(r.original || ''),
+                    rewritten: String(r.rewritten || ''),
+                    why: String(r.why || ''),
+                })).filter((r) => r.original && r.rewritten);
+            } catch (e) {
+                lastErr = e;
+                if (attempt === 1) await new Promise((r) => setTimeout(r, 8000));
+            }
+        }
+        throw lastErr || new Error('Rewrite failed.');
+    }
+
+    async function postJson(url, payload) {
+        let res;
+        try {
+            res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload });
+        } catch (e) {
+            throw new Error('Network error — check your connection and retry.');
+        }
+        let data;
+        try { data = await res.json(); } catch (e) { data = {}; }
+        if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+        return data;
+    }
+
     function normScores(s) {
         const clamp = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
         s = s || {};
@@ -98,5 +142,5 @@
         return { what: String(i.what || i.section || ''), why: String(i.why || i.suggestion || ''), example: String(i.example || '') };
     }
 
-    window.CvAnalyze = { analyze };
+    window.CvAnalyze = { analyze, rewrite };
 })();

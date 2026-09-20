@@ -6,6 +6,12 @@
     const t = (k) => window.I18N.t(k);
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+    // current analysis context (used by rewrite / PDF / share / history)
+    let currentCtx = null;
+    let currentResult = null;
+    let currentRules = null;
+    let lastMeta = {}; // PDF structure info from the last uploaded file
+
     // ---------- CV input ----------
     function initCvInput() {
         const zone = $('cv-drop'), input = $('inp-cv-file'), area = $('inp-cv');
@@ -15,12 +21,13 @@
         ['dragleave', 'drop'].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.remove('drag'); }));
         zone.addEventListener('drop', (e) => { if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
         input.addEventListener('change', () => { if (input.files.length) handleFile(input.files[0]); });
-        area.addEventListener('input', updateStats);
+        area.addEventListener('input', () => { updateStats(); lastMeta = {}; });
 
         async function handleFile(file) {
             try {
                 setStatus('analyze-status', '⏳ ' + esc(file.name) + ' …');
                 const text = await window.CvExtract.extractFile(file);
+                lastMeta = Object.assign({}, (window.CvExtract && window.CvExtract.meta) || {});
                 const words = text.split(/\s+/).filter(Boolean).length;
                 if (!text || words < 30) {
                     setStatus('analyze-status', '⚠️ ' + esc(file.name) + ': ' + t('scannedPdfAdvice'));
@@ -133,13 +140,20 @@
     function setStatus(id, msg) { $(id).textContent = msg || ''; }
 
     let elapsedTimer = null;
-    function startElapsed() {
+    const STEPS = ['stepReading', 'stepKeywords', 'stepMatching', 'stepScoring', 'stepWriting'];
+
+    // elapsed timer + rotating stage messages (free models are slow — this keeps the wait honest)
+    function startElapsed(labelKey, useSteps) {
         const t0 = Date.now();
+        let step = 0;
         stopElapsed();
         elapsedTimer = setInterval(() => {
             const s = Math.round((Date.now() - t0) / 1000);
-            setStatus('analyze-status', '🧠 ' + t('analyzing') + ' (' + s + 's)');
+            if (useSteps && s > 6 && step < STEPS.length - 1 && s % 9 === 0) step++;
+            const label = useSteps ? t(STEPS[step]) : t(labelKey);
+            setStatus('analyze-status', '🧠 ' + label + ' (' + s + 's)');
         }, 1000);
+        setStatus('analyze-status', '🧠 ' + t(useSteps ? STEPS[0] : labelKey) + ' (0s)');
     }
     function stopElapsed() { if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; } }
 
@@ -171,24 +185,130 @@
         if (cv.length < 100) { setStatus('analyze-status', '⚠️ ' + t('needCv')); return; }
         if (job.length < 100) { setStatus('analyze-status', '⚠️ ' + t('needJob')); return; }
 
-        const rules = window.CvRules.runRules(cv, window.I18N.get());
+        const rules = window.CvRules.runRules(cv, window.I18N.get(), lastMeta);
         btn.disabled = true;
-        startElapsed();
+        startElapsed(null, true);
         $('results').classList.add('hidden');
 
         try {
             const result = await window.CvAnalyze.analyze(cv, job, rules.failed, window.I18N.get());
-            render(result, rules);
+            currentCtx = { cv, job };
+            currentResult = result;
+            currentRules = rules;
+            render(result, rules, currentCtx);
             stopElapsed();
             setStatus('analyze-status', '');
             $('results').classList.remove('hidden');
             $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            // remember for before/after + history (only on real analyses)
+            try { localStorage.setItem('cvlens_last', JSON.stringify({ score: result.scores.overall, ts: Date.now() })); } catch (e) { /* full */ }
+            pushHistory({
+                id: String(Date.now()),
+                when: new Date().toLocaleString(),
+                title: result.job.title || (job.split('\n')[0] || '').slice(0, 60),
+                score: result.scores.overall,
+                cv, job, result, rules,
+            });
         } catch (err) {
             stopElapsed();
             setStatus('analyze-status', '❌ ' + t('errorPrefix') + esc(err.message));
         } finally {
             btn.disabled = false;
         }
+    }
+
+    // ---------- AI bullet rewrites ----------
+    async function runRewrite() {
+        if (!currentCtx || !currentCtx.cv) return;
+        const btnR = $('btn-rewrite');
+        btnR.disabled = true;
+        startElapsed('rewriting', false);
+        try {
+            const rewrites = await window.CvAnalyze.rewrite(currentCtx.cv, currentCtx.job, window.I18N.get());
+            stopElapsed();
+            setStatus('analyze-status', '');
+            const box = $('rewrites-box');
+            if (!rewrites.length) {
+                setStatus('analyze-status', 'ℹ️ ' + t('rewriteEmpty'));
+                return;
+            }
+            box.innerHTML = '<h2 class="card-title">✨ ' + esc(t('rewritesTitle')) +
+                ' <span class="badge-count" style="background:rgba(129,140,248,.15);color:#a5b4fc;">' + rewrites.length + '</span></h2>' +
+                '<div class="grid gap-3">' + rewrites.map((r, i) =>
+                    '<div class="item-card rewrite-card">' +
+                    '<div class="rw-orig"><span class="rw-label">' + esc(t('originalLabel')) + '</span>' + esc(r.original) + '</div>' +
+                    '<div class="rw-better"><span class="rw-label ok">' + esc(t('improvedLabel')) + '</span>' + esc(r.rewritten) +
+                    '<button class="btn-secondary rw-copy" data-rw="' + i + '">📋 ' + esc(t('copyBullet')) + '</button></div>' +
+                    '<div class="why">💡 ' + esc(r.why) + '</div>' +
+                    '</div>').join('') + '</div>';
+            box.querySelectorAll('.rw-copy').forEach((b) => b.addEventListener('click', () => {
+                const i = +b.getAttribute('data-rw');
+                navigator.clipboard.writeText(rewrites[i].rewritten).then(() => {
+                    b.textContent = '✅ ' + t('copied');
+                    setTimeout(() => { b.textContent = '📋 ' + t('copyBullet'); }, 1600);
+                }).catch(() => {});
+            }));
+            box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (err) {
+            stopElapsed();
+            setStatus('analyze-status', '❌ ' + t('errorPrefix') + esc(err.message));
+        } finally {
+            btnR.disabled = false;
+        }
+    }
+
+    // ---------- history (localStorage only — nothing leaves the device) ----------
+    function loadHistory() {
+        try { return JSON.parse(localStorage.getItem('cvlens_history') || '[]'); } catch (e) { return []; }
+    }
+    function saveHistory(a) {
+        try { localStorage.setItem('cvlens_history', JSON.stringify(a.slice(0, 10))); } catch (e) { /* storage full */ }
+    }
+    function pushHistory(entry) {
+        const a = loadHistory();
+        a.unshift(entry);
+        saveHistory(a);
+        renderHistory();
+    }
+    function scoreColor(score) { return score >= 70 ? '#34d399' : score >= 45 ? '#fbbf24' : '#f87171'; }
+    function renderHistory() {
+        const box = $('history');
+        if (!box) return;
+        const a = loadHistory();
+        if (!a.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+        box.classList.remove('hidden');
+        box.innerHTML = '<div class="card"><div class="flex items-center justify-between mb-3 gap-2">' +
+            '<h2 class="card-title" style="margin-bottom:0">🕘 ' + esc(t('historyTitle')) + '</h2>' +
+            '<button id="btn-hist-clear" class="link text-xs">' + esc(t('historyClear')) + '</button></div>' +
+            a.map((e) =>
+                '<div class="hist-row">' +
+                '<div class="flex-1 min-w-0"><div class="font-semibold text-sm truncate">' + esc(e.title || '—') + '</div>' +
+                '<div class="text-xs opacity-60">' + esc(e.when || '') + '</div></div>' +
+                '<span class="badge-count" style="background:' + scoreColor(e.score) + '22;color:' + scoreColor(e.score) + ';">' + e.score + '</span>' +
+                '<button class="btn-secondary text-xs shrink-0" data-hist-open="' + esc(e.id) + '">' + esc(t('historyOpen')) + '</button>' +
+                '<button class="hist-del" data-hist-del="' + esc(e.id) + '" aria-label="delete">✕</button>' +
+                '</div>').join('') + '</div>';
+
+        $('btn-hist-clear').addEventListener('click', () => { saveHistory([]); renderHistory(); });
+        box.querySelectorAll('[data-hist-open]').forEach((b) => b.addEventListener('click', () => {
+            const e = loadHistory().find((x) => String(x.id) === b.getAttribute('data-hist-open'));
+            if (!e) return;
+            $('inp-cv').value = e.cv || '';
+            $('inp-job').value = e.job || '';
+            updateStats();
+            lastMeta = {};
+            currentCtx = { cv: e.cv || '', job: e.job || '' };
+            currentResult = e.result;
+            currentRules = e.rules;
+            render(e.result, e.rules, currentCtx);
+            $('results').classList.remove('hidden');
+            $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }));
+        box.querySelectorAll('[data-hist-del]').forEach((b) => b.addEventListener('click', () => {
+            saveHistory(loadHistory().filter((x) => String(x.id) !== b.getAttribute('data-hist-del')));
+            renderHistory();
+        }));
     }
 
     // ---------- rendering ----------
@@ -214,9 +334,40 @@
         return html;
     }
 
-    function render(result, rules) {
+    // where in the CV the keyword actually lives (deterministic, client-side)
+    function whereTag(k) {
+        if (!k.where) return '';
+        if (k.where === 'experience' || k.where === 'projects')
+            return ' <span class="where-tag ok">' + esc(t(k.where === 'experience' ? 'inExperience' : 'inProjects')) + '</span>';
+        if (k.where === 'skills')
+            return ' <span class="where-tag warn">' + esc(t('skillsOnly')) + '</span>';
+        return '';
+    }
+
+    function render(result, rules, ctx) {
         const s = result.scores;
         const verdict = s.overall >= 70 ? 'strong' : s.overall >= 45 ? 'possible' : 'weak';
+
+        // attach keyword placement + sort: must-haves first, worst statuses on top
+        const sections = window.CvRules.splitSections((ctx && ctx.cv) || '');
+        result.keyword_table.forEach((k) => {
+            k.where = k.status !== 'missing' ? window.CvRules.locateKeyword(k.keyword, sections) : '';
+        });
+        const sev = { missing: 0, partial: 1, found: 2 };
+        const kws = result.keyword_table.slice().sort((a, b) =>
+            a.importance === b.importance ? sev[a.status] - sev[b.status] : (a.importance === 'must' ? -1 : 1));
+        const mustKw = kws.filter((k) => k.importance === 'must');
+        const mustFound = mustKw.filter((k) => k.status !== 'missing').length;
+
+        // before/after delta vs the previous analysis (this device)
+        let deltaHtml = '';
+        try {
+            const last = JSON.parse(localStorage.getItem('cvlens_last') || 'null');
+            if (last && typeof last.score === 'number' && last.score !== s.overall) {
+                const d = s.overall - last.score;
+                deltaHtml = '<span class="delta ' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '▲ +' + d : '▼ ' + d) + ' ' + esc(t(d > 0 ? 'deltaUp' : 'deltaDown')) + '</span>';
+            }
+        } catch (e) { /* ignore */ }
 
         let html = '';
 
@@ -224,7 +375,7 @@
         html += '<div class="card"><div class="score-wrap">' + ring(s.overall) +
             '<div class="flex-1 min-w-[250px]">' +
             '<div class="flex items-center gap-3 flex-wrap mb-3">' +
-            '<span class="verdict ' + verdict + '">' + esc(t('verdict')[verdict]) + '</span>' +
+            '<span class="verdict ' + verdict + '">' + esc(t('verdict')[verdict]) + '</span>' + deltaHtml +
             (result.job.title ? '<span class="text-sm opacity-70">' + esc(t('jobDetected')) + ': <strong>' + esc(result.job.title) + (result.job.company ? ' — ' + esc(result.job.company) : '') + '</strong></span>' : '') +
             '</div>' +
             '<div class="subscores">' +
@@ -235,30 +386,35 @@
             '</div>';
 
         // keyword table
-        if (result.keyword_table.length) {
-            html += '<div class="card"><h2 class="card-title">🔑 ' + esc(t('keywordTable')) + '</h2><div class="overflow-x-auto"><table class="kw">' +
+        if (kws.length) {
+            html += '<div class="card"><h2 class="card-title">🔑 ' + esc(t('keywordTable')) + '</h2>' +
+                (mustKw.length ? '<p class="text-xs opacity-70 mb-2">' + esc(String(t('mustSummary')).replace('{found}', mustFound).replace('{total}', mustKw.length)) + '</p>' : '') +
+                '<div class="overflow-x-auto"><table class="kw">' +
                 '<thead><tr><th>' + esc(t('kwCol')) + '</th><th>' + esc(t('importanceCol')) + '</th><th>' + esc(t('statusCol')) + '</th><th>' + esc(t('evidenceCol')) + '</th></tr></thead><tbody>';
-            result.keyword_table.forEach((k) => {
+            kws.forEach((k) => {
                 html += '<tr><td class="font-semibold">' + esc(k.keyword) + '</td>' +
                     '<td><span class="chip ' + k.importance + '">' + esc(t(k.importance === 'must' ? 'mustLabel' : 'niceLabel')) + '</span></td>' +
                     '<td>' + chip(k.status) + '</td>' +
-                    '<td class="opacity-75">' + esc(k.evidence || t('noEvidence')) + '</td></tr>';
+                    '<td class="opacity-75">' + esc(k.evidence || t('noEvidence')) + whereTag(k) + '</td></tr>';
             });
             html += '</tbody></table></div></div>';
         }
 
         // add / improve / remove
-        const sections = [
+        const sectionsHtml = [
             { title: t('addTitle'), items: result.add, cls: '✅', withExample: true },
             { title: t('improveTitle'), items: result.improve.map((i) => ({ what: i.section + ' — ' + i.suggestion, why: '“' + (i.before || '…') + '”  →  “' + (i.after || '…') + '”', example: '' })), cls: '✏️', withExample: false },
             { title: t('removeTitle'), items: result.remove, cls: '❌', withExample: false },
         ];
-        sections.forEach((sec) => {
+        sectionsHtml.forEach((sec) => {
             if (!sec.items.length) return;
             html += '<div class="card"><h2 class="card-title">' + sec.cls + ' ' + esc(sec.title) +
                 ' <span class="badge-count" style="background:rgba(56,189,248,.15);color:#7dd3fc;">' + sec.items.length + '</span></h2>' +
                 '<div class="grid gap-3 md:grid-cols-2">' + sec.items.map((i) => itemCard(i, sec.withExample)).join('') + '</div></div>';
         });
+
+        // AI rewrites land here (✨ button below)
+        html += '<div id="rewrites-box" class="card"></div>';
 
         // rule-based checks
         html += '<div class="card"><h2 class="card-title">⚡ ' + esc(t('rulesTitle')) + ' <span class="badge-count" style="background:' + (rules.failed.length ? 'rgba(248,113,113,.15);color:#fca5a5' : 'rgba(52,211,153,.15);color:#6ee7b7') + ';">' + rules.failed.length + '</span></h2>';
@@ -272,15 +428,233 @@
         html += '</div>';
 
         // actions
-        html += '<div class="flex gap-3 justify-center no-print">' +
+        html += '<div class="flex gap-3 justify-center flex-wrap no-print">' +
+            '<button id="btn-rewrite" class="btn-primary text-sm px-5 py-2.5">✨ ' + esc(t('improveBullets')) + '</button>' +
             '<button id="btn-copy" class="btn-secondary">📋 ' + esc(t('copyReport')) + '</button>' +
+            '<button id="btn-pdf" class="btn-secondary">' + esc(t('downloadPdf')) + '</button>' +
             '<button id="btn-print" class="btn-secondary">🖨️ ' + esc(t('printReport')) + '</button>' +
+            '<button id="btn-share" class="btn-secondary">' + esc(t('shareScore')) + '</button>' +
             '<button id="btn-again" class="btn-secondary">🔁 ' + esc(t('reanalyze')) + '</button></div>';
 
         $('results').innerHTML = html;
         $('btn-copy').addEventListener('click', () => copyReport(result, rules));
+        $('btn-pdf').addEventListener('click', downloadReport);
         $('btn-print').addEventListener('click', () => window.print());
+        $('btn-share').addEventListener('click', shareScore);
         $('btn-again').addEventListener('click', runAnalysis);
+        $('btn-rewrite').addEventListener('click', runRewrite);
+    }
+
+    // ---------- PDF export ----------
+    // jsPDF cannot shape Arabic glyphs — in Arabic the browser's own
+    // Print → Save as PDF handles it perfectly, so we route there instead.
+    function downloadReport() {
+        const result = currentResult, rules = currentRules;
+        if (!result || !rules) return;
+        if (window.I18N.get() === 'ar' || !window.jspdf || !window.jspdf.jsPDF) { window.print(); return; }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        const W = 210, M = 16;
+        let y = 0;
+
+        // header band
+        doc.setFillColor(2, 132, 199);
+        doc.rect(0, 0, W, 24, 'F');
+        doc.setTextColor(255);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+        doc.text('CV Lens — ' + t('resultsTitle'), M, 11);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+        doc.text(new Date().toLocaleString() + (result.job.title ? '   ·   ' + result.job.title : ''), M, 18);
+        y = 34;
+
+        const ensure = (h) => { if (y + h > 282) { doc.addPage(); y = 20; } };
+
+        // score + verdict
+        const s = result.scores;
+        const col = s.overall >= 70 ? [22, 163, 74] : s.overall >= 45 ? [217, 119, 6] : [220, 38, 38];
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(32); doc.setTextColor(col[0], col[1], col[2]);
+        doc.text(s.overall + '/100', M, y);
+        doc.setFontSize(11); doc.setTextColor(71, 85, 105);
+        doc.text(t('verdict')[s.overall >= 70 ? 'strong' : s.overall >= 45 ? 'possible' : 'weak'], M + 45, y);
+        y += 10;
+
+        // subscore bars
+        [[t('subMust'), s.must_haves], [t('subKw'), s.keywords], [t('subExp'), s.experience], [t('subEdu'), s.education], [t('subFmt'), s.format]].forEach((pair) => {
+            ensure(10);
+            doc.setFontSize(9); doc.setTextColor(71, 85, 105);
+            doc.text(String(pair[0]), M, y);
+            doc.setFillColor(226, 232, 240);
+            doc.rect(W - M - 60, y - 3.5, 60, 3.5, 'F');
+            doc.setFillColor(14, 165, 233);
+            doc.rect(W - M - 60, y - 3.5, 60 * pair[1] / 100, 3.5, 'F');
+            doc.setTextColor(15, 23, 42);
+            doc.text(String(pair[1]), W - M - 64, y, { align: 'right' });
+            y += 7;
+        });
+        y += 2;
+
+        // summary
+        if (result.summary) {
+            ensure(16);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
+            doc.text(t('summary'), M, y); y += 5;
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(51, 65, 85);
+            doc.text(doc.splitTextToSize(result.summary, W - M * 2), M, y);
+            y += doc.splitTextToSize(result.summary, W - M * 2).length * 4.5 + 4;
+        }
+
+        // keyword table
+        if (result.keyword_table.length) {
+            ensure(20);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
+            doc.text(t('keywordTable'), M, y); y += 6;
+            doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
+            doc.text(t('kwCol'), M, y);
+            doc.text(t('importanceCol'), M + 62, y);
+            doc.text(t('statusCol'), M + 92, y);
+            doc.text(t('evidenceCol'), M + 118, y);
+            y += 2; doc.setDrawColor(226, 232, 240); doc.line(M, y, W - M, y); y += 4;
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+            result.keyword_table.forEach((k) => {
+                const kwLines = doc.splitTextToSize(String(k.keyword || ''), 58);
+                ensure(kwLines.length * 4 + 3);
+                doc.setTextColor(15, 23, 42);
+                doc.text(kwLines, M, y);
+                doc.setTextColor(100, 116, 139);
+                doc.text(t(k.importance === 'must' ? 'mustLabel' : 'niceLabel'), M + 62, y);
+                const st = { found: [22, 163, 74], partial: [217, 119, 6], missing: [220, 38, 38] }[k.status] || [100, 116, 139];
+                doc.setTextColor(st[0], st[1], st[2]);
+                doc.text(t(k.status), M + 92, y);
+                if (k.evidence) {
+                    doc.setTextColor(100, 116, 139);
+                    doc.text(doc.splitTextToSize(String(k.evidence).slice(0, 60), 66), M + 118, y);
+                }
+                y += kwLines.length * 4 + 2.5;
+            });
+            y += 3;
+        }
+
+        // add / improve / remove sections
+        [['✅ ' + t('addTitle'), result.add, true],
+         ['✏️ ' + t('improveTitle'), result.improve.map((i) => ({ what: i.section + ' — ' + i.suggestion, why: '“' + (i.before || '…') + '” → “' + (i.after || '…') + '”', example: '' })), false],
+         ['❌ ' + t('removeTitle'), result.remove, false]].forEach((sec) => {
+            if (!sec[1].length) return;
+            ensure(14);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
+            doc.text(sec[0], M, y); y += 5;
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+            sec[1].forEach((item) => {
+                const lines = doc.splitTextToSize('• ' + item.what + (item.why ? ' — ' + item.why : ''), W - M * 2);
+                ensure(lines.length * 4.5 + 2);
+                doc.setTextColor(51, 65, 85);
+                doc.text(lines, M, y);
+                y += lines.length * 4.5 + 2;
+            });
+            y += 3;
+        });
+
+        // rule-based checks
+        if (rules.failed.length) {
+            ensure(14);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
+            doc.text(t('rulesTitle'), M, y); y += 5;
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+            rules.failed.forEach((f) => {
+                const lines = doc.splitTextToSize('⚠ ' + f.issue + ' → ' + f.fix, W - M * 2);
+                ensure(lines.length * 4.5 + 2);
+                doc.setTextColor(51, 65, 85);
+                doc.text(lines, M, y);
+                y += lines.length * 4.5 + 2;
+            });
+        }
+
+        // footer on every page
+        const pages = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pages; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8); doc.setTextColor(148, 163, 184);
+            doc.text('CV Lens — hajar-benhadj.github.io/ats-cv-checker', W / 2, 291, { align: 'center' });
+        }
+        doc.save('cv-lens-report.pdf');
+    }
+
+    // ---------- shareable score card (canvas PNG) ----------
+    function shareScore() {
+        const result = currentResult;
+        if (!result) return;
+        const s = result.scores;
+        const canvas = document.createElement('canvas');
+        canvas.width = 1200; canvas.height = 630;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#0b1120';
+        ctx.fillRect(0, 0, 1200, 630);
+        const blob = (x, y, r, color) => {
+            const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+            g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = g; ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
+        };
+        blob(150, 110, 320, 'rgba(14,165,233,.35)');
+        blob(1060, 540, 340, 'rgba(99,102,241,.35)');
+
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = '800 46px "Plus Jakarta Sans", system-ui, sans-serif';
+        ctx.fillText('🎯 CV Lens', 70, 100);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '600 24px "Plus Jakarta Sans", system-ui, sans-serif';
+        ctx.fillText(t('overall'), 70, 138);
+
+        const verdict = s.overall >= 70 ? 'strong' : s.overall >= 45 ? 'possible' : 'weak';
+        const vCol = s.overall >= 70 ? '#34d399' : s.overall >= 45 ? '#fbbf24' : '#f87171';
+        ctx.fillStyle = vCol;
+        ctx.font = '800 32px "Plus Jakarta Sans", system-ui, sans-serif';
+        ctx.fillText(t('verdict')[verdict], 70, 205);
+
+        // mini stats on the left
+        [[t('subMust'), s.must_haves, 240], [t('subKw'), s.keywords, 380], [t('subFmt'), s.format, 520]].forEach((p) => {
+            ctx.fillStyle = '#7dd3fc';
+            ctx.font = '800 40px "Plus Jakarta Sans", system-ui, sans-serif';
+            ctx.fillText(p[1] + '%', 70, p[2]);
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '600 20px "Plus Jakarta Sans", system-ui, sans-serif';
+            ctx.fillText(String(p[0]), 70, p[2] + 26);
+        });
+
+        // score ring on the right
+        const cx = 930, cy = 300, r = 165;
+        ctx.lineWidth = 30;
+        ctx.strokeStyle = 'rgba(148,163,184,.15)';
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = vCol; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * s.overall / 100); ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = '800 105px "Plus Jakarta Sans", system-ui, sans-serif';
+        ctx.fillText(String(s.overall), cx, cy + 18);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '700 30px "Plus Jakarta Sans", system-ui, sans-serif';
+        ctx.fillText('/100', cx, cy + 56);
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '600 22px "Plus Jakarta Sans", system-ui, sans-serif';
+        ctx.fillText('hajar-benhadj.github.io/ats-cv-checker', 600, 595);
+
+        canvas.toBlob((b) => {
+            if (!b) return;
+            const file = new File([b], 'cv-lens-score.png', { type: 'image/png' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                navigator.share({ files: [file], title: 'CV Lens' }).catch(() => {});
+            } else {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(b);
+                a.download = 'cv-lens-score.png';
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+            }
+        }, 'image/png');
     }
 
     function copyReport(result, rules) {
@@ -323,5 +697,6 @@
         const ex = $('btn-example');
         if (ex) ex.addEventListener('click', loadExample);
         updateStats();
+        renderHistory();
     });
 })();

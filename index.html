@@ -3,9 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CV Lens — ATS CV Checker</title>
-    <meta name="description" content="Check your CV against any job posting — keyword match, what to add, what to remove. ATS-friendly, private, works in your browser.">
+    <title>CV Lens — Free ATS CV Checker (EN · FR · AR)</title>
+    <meta name="description" content="Check your CV against any job posting — exact keywords you're missing, what to add, what to cut, AI bullet rewrites and a PDF report. Free, private, in English, French and Arabic.">
+    <meta name="keywords" content="ATS checker, ATS CV checker, CV optimization, resume checker, ATS resume score, keyword match CV, contrôleur ATS CV, فاحص السيرة الذاتية, تحسين السيرة الذاتية">
+    <meta name="author" content="Hajar Benhadj">
     <meta name="theme-color" content="#0ea5e9">
+    <link rel="canonical" href="https://hajar-benhadj.github.io/ats-cv-checker/">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://hajar-benhadj.github.io/ats-cv-checker/">
+    <meta property="og:title" content="CV Lens — See your CV like an ATS does">
+    <meta property="og:description" content="Paste your CV + a job posting. Get the exact keywords you're missing, AI bullet rewrites and a PDF report — free and private.">
+    <meta property="og:image" content="https://hajar-benhadj.github.io/ats-cv-checker/docs/screenshot-results.png">
+    <meta property="og:site_name" content="CV Lens">
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="CV Lens — Free ATS CV Checker">
+    <meta name="twitter:description" content="See your CV like an ATS does — keywords, gaps and fixes, with evidence from your own CV.">
+    <meta name="twitter:image" content="https://hajar-benhadj.github.io/ats-cv-checker/docs/screenshot-results.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,7 +28,22 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "CV Lens",
+      "url": "https://hajar-benhadj.github.io/ats-cv-checker/",
+      "description": "Free ATS CV checker — compare your CV to any job posting, get missing keywords, AI bullet rewrites and a PDF report.",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Any",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "author": { "@type": "Person", "name": "Hajar Benhadj" },
+      "inLanguage": ["en", "fr", "ar"]
+    }
+    </script>
 </head>
 <body class="min-h-screen">
 
@@ -32,6 +62,7 @@
                 <select id="lang-select" class="input w-auto text-sm" aria-label="Language">
                     <option value="en">English</option>
                     <option value="fr">Français</option>
+                    <option value="ar">العربية</option>
                 </select>
             </div>
         </div>
@@ -75,6 +106,9 @@
             <button id="btn-example" class="btn-secondary text-sm ml-2" data-i18n="example">✨ Try an example</button>
             <p id="analyze-status" class="text-sm mt-3"></p>
         </div>
+
+        <!-- History (localStorage only) -->
+        <section id="history" class="hidden mt-6"></section>
 
         <!-- Results -->
         <section id="results" class="hidden mt-8 space-y-4"></section>

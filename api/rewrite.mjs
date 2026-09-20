@@ -1,5 +1,5 @@
-// Vercel serverless function — keeps the OpenRouter key server-side.
-// Node-style (req, res) handler for maximum runtime compatibility.
+// Vercel serverless function — AI bullet rewrites (keeps the OpenRouter key server-side).
+// Same resilience pattern as analyze.mjs: model fallback chain + JSON validation.
 export const maxDuration = 300;
 
 const ALLOWED_ORIGINS = [
@@ -7,7 +7,6 @@ const ALLOWED_ORIGINS = [
     'https://ats-cv-checker-five.vercel.app',
 ];
 
-// best-effort in-memory rate limit (per warm instance)
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_PER_HOUR = 10;
 const hits = new Map();
@@ -69,7 +68,6 @@ export default async function handler(req, res) {
     const cv = String(body.cv || '').slice(0, 12000);
     const job = String(body.job || '').slice(0, 12000);
     const lang = body.lang === 'fr' ? 'fr' : body.lang === 'ar' ? 'ar' : 'en';
-    const rulesFailed = Array.isArray(body.rulesFailed) ? body.rulesFailed.slice(0, 12) : [];
 
     if (cv.length < 100 || job.length < 100) {
         res.statusCode = 400;
@@ -78,22 +76,21 @@ export default async function handler(req, res) {
 
     const models = [
         process.env.OPENROUTER_MODEL || 'deepseek/deepseek-v4-flash-0731:free',
-        'nvidia/nemotron-3-super-120b-a12b:free', // fallback when the primary free provider hiccups
+        'nvidia/nemotron-3-super-120b-a12b:free',
     ];
 
     try {
-        // Validate the AI actually returned complete JSON; try primary then fallback model.
         let aiText = null;
         let lastErr = null;
         for (const model of models) {
             for (let attempt = 0; attempt < 2 && aiText === null; attempt++) {
                 try {
-                    const text = await callOpenRouter(key, model, cv, job, lang, rulesFailed);
-                    JSON.parse(String(text).replace(/```json|```/g, '').trim()); // throws if truncated
+                    const text = await callOpenRouter(key, model, cv, job, lang);
+                    const parsed = JSON.parse(String(text).replace(/```json|```/g, '').trim());
+                    if (!parsed || !Array.isArray(parsed.rewrites)) throw new Error('Missing rewrites array');
                     aiText = text;
                 } catch (e) {
                     lastErr = e;
-                    // provider hiccup on this model → switch model immediately
                     if (/provider|busy/i.test(String(e.message || ''))) break;
                 }
             }
@@ -112,7 +109,7 @@ export default async function handler(req, res) {
     }
 }
 
-async function callOpenRouter(key, model, cv, job, lang, rulesFailed) {
+async function callOpenRouter(key, model, cv, job, lang) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 120000);
     try {
@@ -127,12 +124,12 @@ async function callOpenRouter(key, model, cv, job, lang, rulesFailed) {
             },
             body: JSON.stringify({
                 model,
-                temperature: 0.2,
-                max_tokens: 6000,
+                temperature: 0.3,
+                max_tokens: 3500,
                 response_format: { type: 'json_object' },
                 messages: [
                     { role: 'system', content: systemPrompt(lang) },
-                    { role: 'user', content: userPrompt(cv, job, rulesFailed) },
+                    { role: 'user', content: userPrompt(cv, job) },
                 ],
             }),
         });
@@ -143,9 +140,8 @@ async function callOpenRouter(key, model, cv, job, lang, rulesFailed) {
                 const err = await res.json();
                 msg = (err.error && (err.error.message || err.error.type)) || msg;
             } catch (e) { /* ignore */ }
-            // free-tier provider hiccups are transient — tell the user to just retry
             if (/provider returned error|rate limit|429/i.test(String(msg))) {
-                throw new Error('The free AI provider is busy right now — please press Analyze again.');
+                throw new Error('The free AI provider is busy right now — please try again.');
             }
             throw new Error('AI provider: ' + msg);
         }
@@ -159,42 +155,32 @@ async function callOpenRouter(key, model, cv, job, lang, rulesFailed) {
     }
 }
 
-// Strict evidence-based prompt (same contract as the original client-side version).
 function systemPrompt(lang) {
-    const fr = lang === 'fr';
+    const langLine = lang === 'fr'
+        ? 'Write all human-readable strings in FRENCH.'
+        : lang === 'ar'
+            ? 'Write all human-readable strings in ARABIC (Modern Standard Arabic, professional tone).'
+            : 'Write all human-readable strings in English.';
     return [
-        'You are a meticulous ATS (Applicant Tracking System) analyst and senior technical recruiter.',
-        'You compare a candidate CV against ONE job posting and output ONLY strict JSON (no markdown fences, no commentary).',
+        'You are an expert CV/résumé writer and ATS specialist.',
+        'Given a CV and one job posting, pick the 4–6 weakest experience bullet points — vague, unquantified, generic, or missing the job\u2019s key keywords — and rewrite them.',
         '',
         'ACCURACY RULES (absolute):',
-        '- Every claim must be grounded in the provided texts. Quote short evidence from the CV (\u226412 words) or write "".',
-        '- NEVER invent experience, tools or keywords the candidate may not have. Suggestions must be conditional ("if you have used X, add\u2026").',
-        '- keyword status: "found" ONLY if the requirement is explicitly present in the CV; "partial" if a closely related skill/experience exists (say how); "missing" otherwise. When unsure, prefer "partial" with an honest note.',
-        '- importance: "must" only for requirements the posting calls required/mandatory or lists first; otherwise "nice".',
-        '- Do not penalize synonyms twice: if CV says "JS" and job says "JavaScript", that is "found".',
-        '- Be strict but fair: scoring 90+ only for near-perfect must-have coverage.',
+        '- NEVER invent facts, tools, numbers, employers or roles. Only reorganize what the CV already shows and surface job keywords the candidate genuinely demonstrates somewhere in the CV.',
+        '- If a number would strengthen a bullet but is unknown, insert a clearly marked placeholder like [X%] or [N users] instead of inventing one.',
+        '- Prefer bullets from the Experience section; only touch Skills/Projects lines if there are not enough experience bullets.',
+        '- Each rewritten bullet: 1–2 lines max, starts with a strong action verb, keeps technical terms exact.',
+        '- "why": one short sentence explaining what changed (verb, keyword, structure, number).',
+        '- If the CV genuinely has no improvable bullets, return an empty rewrites array — do not force it.',
         '',
-        'OUTPUT JSON SCHEMA (respond with exactly this structure):',
-        '{',
-        '  "job": { "title": string, "company": string, "must_haves": string[], "nice_to_haves": string[] },',
-        '  "scores": { "overall": 0-100, "must_haves": 0-100, "keywords": 0-100, "experience": 0-100, "education": 0-100, "format": 0-100 },',
-        '  "keyword_table": [ { "keyword": string, "importance": "must"|"nice", "status": "found"|"partial"|"missing", "evidence": string } ],',
-        '  "add": [ { "what": string, "why": string, "example": string } ],',
-        '  "remove": [ { "what": string, "why": string } ],',
-        '  "improve": [ { "section": string, "suggestion": string, "before": string, "after": string } ],',
-        '  "summary": string',
-        '}',
+        'OUTPUT ONLY strict JSON, exactly this structure:',
+        '{"rewrites":[{"original":string,"rewritten":string,"why":string}]}',
         '',
-        lang === 'fr' ? 'Write all human-readable strings in FRENCH. Keywords stay in their original language.'
-            : lang === 'ar' ? 'Write all human-readable strings in ARABIC (Modern Standard Arabic, professional tone). Keywords stay in their original language.'
-            : 'Write all human-readable strings in English. Keep keywords in their original language.',
+        langLine,
         'Respond with JSON only.',
     ].join('\n');
 }
 
-function userPrompt(cv, job, rulesFailed) {
-    const rulesNote = rulesFailed && rulesFailed.length
-        ? '\n\nRule-based formatting issues already detected automatically (factor them into the "format" score): ' + rulesFailed.join('; ')
-        : '';
-    return '### JOB POSTING\n' + job.trim() + '\n\n### CANDIDATE CV\n' + cv.trim() + rulesNote + '\n\nAnalyze this CV against this job posting. Be precise and evidence-based.';
+function userPrompt(cv, job) {
+    return '### JOB POSTING\n' + job.trim() + '\n\n### CANDIDATE CV\n' + cv.trim() + '\n\nRewrite the weakest bullets of this CV for this job.';
 }
